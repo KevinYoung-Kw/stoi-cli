@@ -50,6 +50,7 @@ COMMANDS = {
     "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
     "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
     "/settings":  ("配置 LLM provider 和 API key",       ""),
+    "/overview":  ("全局 Token 效率报告（全部历史 session）",    "比 /report 更全面"),
     "/setup":     ("一键配置 MCP，让 Claude Code 直接调用 STOI", ""),
     "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
     "/?":         ("显示所有快捷键",                      ""),
@@ -234,6 +235,9 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/status":
         _run_status()
+
+    elif cmd == "/overview":
+        _run_overview()
 
     elif cmd == "/setup":
         _run_setup()
@@ -469,6 +473,75 @@ def _show_session_mini_list(files):
         name  = f"{f.parent.name[:14]}/{f.stem[:14]}"
         marker = "[green]●[/green]" if state.current_session == f else " "
         console.print(f"  {marker}[bold]{i}[/bold]  [dim]{mtime}[/dim]  {name}")
+    console.print()
+
+
+def _run_overview():
+    """全局 Token 效率报告——基于 stats-cache.json，覆盖所有历史 session"""
+    from stoi_core import get_global_efficiency_report
+    from datetime import datetime
+
+    console.print()
+    with console.status("[dim]读取全局统计...[/dim]", spinner="dots"):
+        r = get_global_efficiency_report()
+
+    if "error" in r:
+        console.print(f"  [yellow]{r['error']}[/yellow]")
+        return
+
+    # 全局含屎量等级
+    stoi = r["global_stoi"]
+    hit  = r["global_hit_rate"]
+    color_map = {(0,30): "green", (30,50): "yellow", (50,75): "dark_orange", (75,101): "red"}
+    color = next((c for (lo,hi),c in color_map.items() if lo <= stoi < hi), "white")
+    emoji = "✅" if stoi < 30 else "🟡" if stoi < 50 else "🟠" if stoi < 75 else "💩"
+
+    console.print(f"  [bold #FFB800]💩 STOI 全局报告[/bold #FFB800]  [dim]基于 {r['total_sessions']} 个 session，{r['total_messages']:,} 条消息[/dim]")
+    console.print()
+
+    # 核心数字
+    console.print(f"  [dim]全局含屎量[/dim]   [{color}]{stoi:.1f}% {emoji}[/{color}]")
+    console.print(f"  [dim]缓存命中率[/dim]   [white]{hit:.1f}%[/white]  [dim]（命中越高越省钱）[/dim]")
+    console.print(f"  [dim]平均 session 长度[/dim]  [white]{r['avg_session_len']:.0f}[/white] 条消息")
+    console.print(f"  [dim]重复发送消息[/dim]  [yellow]{r['repeat_messages']}[/yellow] 条  [dim]（5分钟内重发同一条）[/dim]")
+    console.print()
+
+    # 模型使用情况
+    console.print(f"  [bold white]模型使用效率[/bold white]")
+    for m in r["model_stats"][:3]:
+        hit_c = "green" if m["hit_rate"] > 70 else "yellow" if m["hit_rate"] > 40 else "red"
+        console.print(f"  [dim]{m['model'][:25]:<27}[/dim] 命中率 [{hit_c}]{m['hit_rate']:>5.1f}%[/{hit_c}]  [dim]{m['input']/1e9:.2f}B input tokens[/dim]")
+    console.print()
+
+    # 最近7天趋势
+    recent = r.get("recent_days", [])
+    if recent:
+        console.print(f"  [bold white]最近 {len(recent)} 天活动[/bold white]")
+        for d in recent[-5:]:
+            msgs = d.get("messageCount", 0)
+            sess = d.get("sessionCount", 0)
+            tools = d.get("toolCallCount", 0)
+            tool_ratio = f"{tools/msgs:.2f}" if msgs > 0 else "0"
+            bar_w = min(20, int(msgs / 500))
+            bar = "█" * bar_w
+            console.print(f"  [dim]{d['date']}[/dim]  [{color}]{bar:<20}[/{color}]  [white]{msgs:>5}[/white] msgs / [dim]{sess}[/dim] sessions  tool/msg [dim]{tool_ratio}[/dim]")
+    console.print()
+
+    # 问题总结
+    issues = []
+    if stoi > 50:
+        issues.append(f"⚠ 全局含屎量 {stoi:.0f}%——历史上大量 token 未能命中缓存")
+    if r["avg_session_len"] > 1000:
+        issues.append(f"⚠ 平均 session {r['avg_session_len']:.0f} 条消息过长，建议 800 条后 /compact 或新建 session")
+    if r["repeat_messages"] > 20:
+        issues.append(f"⚠ {r['repeat_messages']} 条重复发送——重发前补充上下文比原样重发效果好")
+
+    if issues:
+        console.print(f"  [bold red]发现 {len(issues)} 个可优化点：[/bold red]")
+        for iss in issues:
+            console.print(f"  {iss}")
+    else:
+        console.print("  [green]✅ 整体使用模式健康[/green]")
     console.print()
 
 

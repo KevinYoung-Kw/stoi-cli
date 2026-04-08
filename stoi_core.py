@@ -836,6 +836,122 @@ def _get_llm_suggestions(report: STOIReport) -> list[str]:
         return []
 
 
+# ── Claude Code 全局统计（stats-cache.json）─────────────────────────────────
+def load_claude_stats() -> dict:
+    """
+    读取 ~/.claude/stats-cache.json，返回全局统计。
+    这是 STOI 最有价值的数据源之一——涵盖所有历史 session。
+    """
+    stats_file = Path("~/.claude/stats-cache.json").expanduser()
+    if not stats_file.exists():
+        return {}
+    try:
+        data = json.loads(stats_file.read_text(encoding="utf-8"))
+        return data
+    except Exception:
+        return {}
+
+
+def get_global_efficiency_report() -> dict:
+    """
+    基于 stats-cache.json 生成全局 Token 效率报告。
+    不需要分析单个 session，直接从汇总数据中提取。
+    """
+    data = load_claude_stats()
+    if not data:
+        return {"error": "未找到 ~/.claude/stats-cache.json"}
+
+    # 模型使用情况
+    model_usage = data.get("modelUsage", {})
+    total_input      = sum(v.get("inputTokens", 0) for v in model_usage.values())
+    total_output     = sum(v.get("outputTokens", 0) for v in model_usage.values())
+    total_cache_read = sum(v.get("cacheReadInputTokens", 0) for v in model_usage.values())
+    total_cache_write= sum(v.get("cacheCreationInputTokens", 0) for v in model_usage.values())
+    total_context    = total_input + total_cache_read + total_cache_write
+
+    # 全局含屎量（cache miss 比例）
+    global_stoi = round(total_input / total_context * 100, 1) if total_context > 0 else 0.0
+    global_hit  = round(total_cache_read / total_context * 100, 1) if total_context > 0 else 0.0
+
+    # 按模型排序
+    model_stats = []
+    for model, v in sorted(model_usage.items(),
+                            key=lambda x: x[1].get("inputTokens", 0), reverse=True)[:5]:
+        ctx = v.get("inputTokens", 0) + v.get("cacheReadInputTokens", 0) + v.get("cacheCreationInputTokens", 0)
+        model_stats.append({
+            "model":      model,
+            "input":      v.get("inputTokens", 0),
+            "output":     v.get("outputTokens", 0),
+            "cache_read": v.get("cacheReadInputTokens", 0),
+            "hit_rate":   round(v.get("cacheReadInputTokens", 0) / ctx * 100, 1) if ctx > 0 else 0.0,
+            "cost_usd":   v.get("costUSD", 0),
+        })
+
+    # 每日活动
+    daily = data.get("dailyActivity", [])
+    recent_days = sorted(daily, key=lambda x: x.get("date", ""))[-14:]
+    avg_msg_per_day = sum(d.get("messageCount", 0) for d in recent_days) / max(len(recent_days), 1)
+    avg_session_len = (
+        sum(d.get("messageCount", 0) for d in recent_days) /
+        max(sum(d.get("sessionCount", 1) for d in recent_days), 1)
+    )
+
+    # 重复发送检测（从 history.jsonl 取最近消息）
+    repeat_count = _detect_repeat_messages()
+
+    # 最长 session
+    longest = data.get("longestSession", {})
+
+    return {
+        "total_messages":   data.get("totalMessages", 0),
+        "total_sessions":   data.get("totalSessions", 0),
+        "total_input":      total_input,
+        "total_output":     total_output,
+        "total_cache_read": total_cache_read,
+        "total_context":    total_context,
+        "global_stoi":      global_stoi,
+        "global_hit_rate":  global_hit,
+        "model_stats":      model_stats,
+        "avg_msg_per_day":  round(avg_msg_per_day, 1),
+        "avg_session_len":  round(avg_session_len, 1),
+        "repeat_messages":  repeat_count,
+        "longest_session":  longest,
+        "recent_days":      recent_days[-7:],
+    }
+
+
+def _detect_repeat_messages(window_minutes: int = 5) -> int:
+    """检测 history.jsonl 中短时间内重复发送的消息数量"""
+    history_file = Path("~/.claude/history.jsonl").expanduser()
+    if not history_file.exists():
+        return 0
+    try:
+        records = []
+        with open(history_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    records.append({
+                        "text": obj.get("display", "")[:100],
+                        "ts":   obj.get("timestamp", 0),
+                    })
+                except Exception:
+                    continue
+
+        # 找 window 内的重复
+        repeat_count = 0
+        for i in range(1, len(records)):
+            if (records[i]["text"] == records[i-1]["text"] and
+                abs(records[i]["ts"] - records[i-1]["ts"]) < window_minutes * 60 * 1000):
+                repeat_count += 1
+        return repeat_count
+    except Exception:
+        return 0
+
+
 # ── 工具函数 ─────────────────────────────────────────────────────────────────
 def find_claude_sessions(top: int = 20) -> list[Path]:
     base = Path("~/.claude/projects").expanduser()

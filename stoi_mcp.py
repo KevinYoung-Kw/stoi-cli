@@ -90,6 +90,11 @@ TOOLS = [
         }
     },
     {
+        "name": "stoi_overview",
+        "description": "查看所有历史 Claude Code session 的全局 Token 效率报告。包含总消息数、全局含屎量、缓存命中率、模型使用分布、近期活动趋势、重复发送检测。在想知道'我整体的 token 使用效率如何'时调用。",
+        "inputSchema": {"type": "object", "properties": {}}
+    },
+    {
         "name": "stoi_blame",
         "description": "分析 System Prompt 内容，找出导致 KV Cache 失效的动态字段（时间戳、UUID、绝对路径等）。",
         "inputSchema": {
@@ -119,6 +124,9 @@ def handle_tool(name: str, args: dict) -> str:
         elif name == "stoi_insights":
             path = args.get("session_path")
             return _tool_insights(path)
+
+        elif name == "stoi_overview":
+            return _tool_overview()
 
         elif name == "stoi_blame":
             return _tool_blame(args.get("system_prompt", ""))
@@ -187,6 +195,39 @@ def _tool_insights(path=None) -> str:
     result += "## AI 改进建议（基于知识库）\n\n"
     for s in suggestions:
         result += s + "\n"
+    return result
+
+
+def _tool_overview() -> str:
+    """全局 Token 效率报告"""
+    from stoi_core import get_global_efficiency_report
+    r = get_global_efficiency_report()
+    if "error" in r:
+        return r["error"]
+
+    stoi = r["global_stoi"]
+    emoji = "✅" if stoi < 30 else "🟡" if stoi < 50 else "🟠" if stoi < 75 else "💩"
+
+    result = f"# STOI 全局报告\n\n"
+    result += f"| 指标 | 数值 |\n|------|------|\n"
+    result += f"| 总 sessions | {r['total_sessions']} |\n"
+    result += f"| 总消息数 | {r['total_messages']:,} |\n"
+    result += f"| 全局含屎量 | {emoji} **{stoi:.1f}%** |\n"
+    result += f"| 缓存命中率 | {r['global_hit_rate']:.1f}% |\n"
+    result += f"| 平均 session 长度 | {r['avg_session_len']:.0f} 条消息 |\n"
+    result += f"| 重复发送消息 | {r['repeat_messages']} 条 |\n\n"
+    result += "## 模型使用效率\n\n"
+    for m in r["model_stats"][:3]:
+        result += f"- **{m['model']}**: 命中率 {m['hit_rate']:.1f}%，{m['input']/1e9:.2f}B input tokens\n"
+    result += "\n## 主要优化建议\n\n"
+    if stoi > 50:
+        result += f"- 全局含屎量 {stoi:.0f}%，建议检查 CLAUDE.md 是否频繁变动，并定期运行 /compact\n"
+    if r["avg_session_len"] > 1000:
+        result += f"- 平均 session {r['avg_session_len']:.0f} 条消息过长，超过 800 条时运行 /compact\n"
+    if r["repeat_messages"] > 20:
+        result += f"- {r['repeat_messages']} 条消息被重复发送，补充具体指令比原样重发效果更好\n"
+    if not any([stoi > 50, r["avg_session_len"] > 1000, r["repeat_messages"] > 20]):
+        result += "- 整体使用模式健康，继续保持\n"
     return result
 
 
