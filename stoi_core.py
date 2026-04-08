@@ -574,13 +574,58 @@ def analyze(
     report.issues = _detect_issues(turns)
 
     # 7. LLM 深度建议（可选）
-    if llm_enabled and report.issues:
-        report.llm_suggestions = _get_llm_suggestions(report)
+    if llm_enabled:
+        from stoi_advisor import get_suggestions
+        report.llm_suggestions = get_suggestions(report)
 
     return report
 
 
 # ── LLM 建议 ─────────────────────────────────────────────────────────────────
+INSIGHTS_KNOWLEDGE = """你是 STOI（Shit Token On Investment）的 AI 分析引擎，专注于 AI 编程工具的 Token 效率优化。
+
+你掌握以下领域的专业知识：
+
+## KV Cache 优化原则
+- KV Cache 命中与不命中的成本差达 10x（Anthropic 定价：cache read $0.30/M vs input $3.00/M）
+- Cache miss 最常见原因（按严重程度）：
+  1. System Prompt 中注入时间戳（Claude Code 已知 bug，每次请求时间不同导致前缀变化）
+  2. 动态切换 tools 列表（每次变动导致模板重新插入，cache 全失效）
+  3. 绝对路径注入（/Users/xxx 换机器必失效）
+  4. 随机 UUID 注入
+- 修复方法：将所有动态字段移至 user message，System Prompt 保持静态
+
+## 上下文膨胀（Context Bloat）
+- 来源：Liu et al. (2023) "Lost in the Middle"，TACL
+- 核心：LLM 对长上下文中间部分注意力最弱，早期信息被付费但被忽视
+- 量化标准：上下文增长 >300% 即为严重膨胀
+- 修复方法：
+  1. 超过 10 轮后启用对话摘要压缩（固定左侧系统提示 + 压缩右侧历史）
+  2. LLMLingua-2（Microsoft ACL 2024）：可压缩至 1/4 tokens，RAG 性能不降反升 21.4%
+  3. 拆分 session：将独立任务拆成独立 session，避免上下文污染
+
+## 输出有效性（Feedback Validity）
+- 用户说"不对/还是不行/没改" → 上一轮 AI 输出无效，token 全浪费
+- 有效率 <70% 说明 prompt 设计有问题，AI 经常误解需求
+- 修复方法：在 prompt 中更明确地描述任务边界、输出格式、成功标准
+
+## 模型选择
+- claude-opus-4-5 适合：复杂推理、架构设计、长文档分析
+- claude-sonnet-4-5 适合：日常编程、代码审查、一般问答（成本 1/5）
+- 简单任务用 Opus 是常见的"过度工程"浪费
+
+## 多轮优化策略
+- 每 5-10 轮检查一次上下文质量，超过 80K tokens 考虑压缩
+- 工具调用结果在使用后应摘要化，不要原始堆积
+- 把"大任务"拆成"小任务链"，每个 session 有明确的结束条件
+
+你的建议必须：
+1. 基于上述知识，针对具体数据给出精准诊断
+2. 每条建议包含：问题根因 + 具体操作 + 预期收益
+3. 不给通用废话，不给"建议优化提示词"这种无意义建议
+4. 如果数据显示该指标已经很好，直接说"该指标良好，无需优化"
+"""
+
 def _get_llm_suggestions(report: STOIReport) -> list[str]:
     try:
         from stoi_config import load_config, get_api_key
@@ -592,23 +637,48 @@ def _get_llm_suggestions(report: STOIReport) -> list[str]:
         if not api_key:
             return []
 
-        prompt = f"""你是 STOI Token 效率分析师。根据以下分析数据，给出 3 条具体、可立即执行的改进建议。
+        # 构建详细的数据摘要
+        issues_text = "\n".join(
+            f'- [{i["severity"]}] {i["title"]}\n  详情：{i["detail"]}\n  当前建议：{i["fix"]}'
+            for i in report.issues[:3]
+        ) if report.issues else "- 未检测到明显问题"
 
-数据摘要：
-- 会话：{report.session_name}，{report.valid_turns} 轮
+        # 趋势分析
+        scored = [t for t in report.turns if not t.is_stub and not t.is_baseline and t.role == "assistant"]
+        trend = ""
+        if len(scored) >= 4:
+            first_half = [t.stoi_score for t in scored[:len(scored)//2]]
+            second_half = [t.stoi_score for t in scored[len(scored)//2:]]
+            fa = sum(first_half)/len(first_half)
+            sa = sum(second_half)/len(second_half)
+            trend = f"前半段均值 {fa:.1f}% → 后半段均值 {sa:.1f}%"
+
+        prompt = f"""请根据以下 STOI 分析数据，给出 3 条具体的改进建议。
+
+## 会话数据
+- 工具：Claude Code，会话名：{report.session_name}
+- 总轮次：{report.total_turns}（有效：{report.valid_turns}）
+- 模型：{report.model}
+
+## L1: KV Cache 效率
 - 平均含屎量：{report.avg_stoi_score:.1f}%（{report.stoi_level}）
-- 缓存命中率：{report.avg_cache_hit_rate:.1f}%
-- AI 输出有效率：{report.effectiveness_rate:.1f}%（{report.invalid_turns_count} 轮被用户否定）
-- 实际花费：${report.total_cost_actual:.4f}，其中 ${report.waste_cost:.4f} 花在被否定的输出上
+- 平均缓存命中率：{report.avg_cache_hit_rate:.1f}%
+- 总输入：{report.total_input:,} tokens，其中缓存命中：{report.total_cache_read:,} tokens
+- 实际花费：${report.total_cost_actual:.4f}，因 cache 节省：${report.total_cost_saved:.4f}
+- 趋势：{trend or "数据不足"}
 
-主要问题：
-{chr(10).join(f'- [{i["severity"]}] {i["title"]}: {i["detail"]}' for i in report.issues[:3])}
+## L2: 输出有效性
+- 有效轮次：{report.valid_turns_count}，被否定：{report.invalid_turns_count}，部分有效：{report.partial_turns_count}
+- 有效率：{report.effectiveness_rate:.1f}%
+- 被否定输出浪费：${report.waste_cost:.4f}
 
-要求：
-- 每条建议一行
-- 包含具体操作（不是"建议优化"，而是"把 system prompt 第 X 行的时间戳删掉"）
-- 包含预期收益
-- 用中文，不超过 50 字每条"""
+## 检测到的问题
+{issues_text}
+
+请给出 3 条建议，每条一段，格式：
+**问题**：XXX
+**操作**：具体怎么做（不超过 2 句话）
+**收益**：预期节省 XX% token 或 $XX"""
 
         if provider == "anthropic":
             import anthropic
