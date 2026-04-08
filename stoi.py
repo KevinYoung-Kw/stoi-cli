@@ -44,7 +44,7 @@ def print_logo():
 # ── stoi report ───────────────────────────────────────────────────────────────
 def cmd_report(args: list[str]) -> None:
     from stoi_core import analyze, find_claude_sessions, find_opencode_sessions
-    from stoi_report import render_cli as print_report, render_html as generate_html
+    from stoi_report import render_cli, render_html, render_report
 
     html_mode = "--html" in args
     llm_mode  = "--llm" in args
@@ -84,11 +84,11 @@ def cmd_report(args: list[str]) -> None:
         return
 
     # 输出报告
-    print_report(report)
+    render_cli(report)
 
     # HTML
     if html_mode:
-        html_path = generate_html(report, Path("~/.stoi/report.html").expanduser())
+        html_path = render_html(report, Path("~/.stoi/report.html").expanduser())
         console.print(f"\n[green]✅ HTML 报告已生成:[/green] {html_path}")
         try:
             subprocess.Popen(["open", str(html_path)])
@@ -99,7 +99,7 @@ def cmd_report(args: list[str]) -> None:
 def _report_all(html_mode: bool, llm_mode: bool) -> None:
     """分析所有历史 session，输出汇总"""
     from stoi_core import analyze, find_claude_sessions, STOIReport
-    from stoi_report import generate_html
+    from stoi_report import render_html
 
     files = find_claude_sessions(10)
     if not files:
@@ -131,7 +131,7 @@ def _report_all(html_mode: bool, llm_mode: bool) -> None:
     table.add_column("等级",         width=14)
 
     for r in all_reports:
-        from stoi_report import LEVEL_EMOJI, LEVEL_COLORS
+        
         lc = LEVEL_COLORS.get(r.stoi_level, "white")
         em = LEVEL_EMOJI.get(r.stoi_level, "")
         table.add_row(
@@ -181,7 +181,7 @@ def cmd_config(args: list[str]) -> None:
 def cmd_compare(args: list[str]) -> None:
     """before/after 对比：选两个 session，展示含屎量变化"""
     from stoi_core import analyze, find_claude_sessions
-    from stoi_report import LEVEL_EMOJI, LEVEL_COLORS
+    
 
     print_logo()
     files = find_claude_sessions(10)

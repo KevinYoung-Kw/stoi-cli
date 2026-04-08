@@ -101,17 +101,9 @@ def _rule_based_suggestions(report: STOIReport) -> list[str]:
             s.append(f"有 {report.invalid_turns_count} 轮输出被用户否定：在 prompt 里加入输出格式约束和示例，减少返工率")
     if report.avg_stoi_score > 50:
         s.append("考虑每 20 轮压缩一次历史对话（保留摘要），避免上下文膨胀导致 token 浪费")
-    # pad to 3
-    defaults = [
-        "使用 stoi blame 命令精确定位 Cache Miss 的根本原因",
-        "对简单问答任务改用 claude-haiku-3-5，成本可降低 ~90%",
-        "启用 STOI Proxy 模式以获得更细粒度的 System Prompt 分析",
-    ]
-    for d in defaults:
-        if len(s) >= 3:
-            break
-        if d not in s:
-            s.append(d)
+    # 只在真正有问题时才给建议，没问题就诚实说没问题
+    if not s:
+        s.append("当前 session 整体健康，无明显优化空间")
     return s[:3]
 
 

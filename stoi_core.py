@@ -614,7 +614,7 @@ def _get_llm_suggestions(report: STOIReport) -> list[str]:
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
             resp = client.messages.create(
-                model=model or "claude-haiku-3-5",
+                model=model or "claude-sonnet-4-5",
                 max_tokens=512,
                 messages=[{"role": "user", "content": prompt}],
             )
