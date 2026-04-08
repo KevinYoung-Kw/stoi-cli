@@ -139,7 +139,7 @@ def handle_tool(name: str, args: dict) -> str:
 
 
 def _tool_latest(with_insights: bool) -> str:
-    from .stoi_core import analyze, find_claude_sessions
+    from stoi_core import analyze, find_claude_sessions
 
     files = find_claude_sessions(1)
     if not files:
@@ -150,7 +150,7 @@ def _tool_latest(with_insights: bool) -> str:
 
 
 def _tool_report(path, with_insights: bool) -> str:
-    from .stoi_core import analyze, find_claude_sessions
+    from stoi_core import analyze, find_claude_sessions
 
     if path:
         p = Path(path)
@@ -167,8 +167,8 @@ def _tool_report(path, with_insights: bool) -> str:
 
 
 def _tool_insights(path=None) -> str:
-    from .stoi_core import analyze, find_claude_sessions
-    from .stoi_advisor import get_suggestions
+    from stoi_core import analyze, find_claude_sessions
+    from stoi_advisor import get_suggestions
 
     if path:
         p = Path(path)
@@ -200,7 +200,7 @@ def _tool_insights(path=None) -> str:
 
 def _tool_overview() -> str:
     """全局 Token 效率报告"""
-    from .stoi_core import get_global_efficiency_report
+    from stoi_core import get_global_efficiency_report
     r = get_global_efficiency_report()
     if "error" in r:
         return r["error"]

@@ -44,18 +44,13 @@ LOGO = r"""
  ╚══════╝   ╚═╝    ╚═════╝ ╚═╝"""
 
 COMMANDS = {
-    "/report":    ("分析当前 session 的含屎量",          "快速，不调用 LLM"),
-    "/insights":  ("AI 深度建议（调用 LLM + 知识库）",   "需要 API key"),
-    "/sessions":  ("列出并切换 session",                 "支持 claude/opencode/gemini"),
-    "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
-    "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
-    "/settings":  ("配置 LLM provider 和 API key",       ""),
-    "/output":    ("输出质量分析（Yapping/重复/多方案检测）",   "需先运行 stoi start"),
-    "/overview":  ("全局 Token 效率报告（全部历史 session）",    "比 /report 更全面"),
-    "/setup":     ("一键配置 MCP，让 Claude Code 直接调用 STOI", ""),
-    "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
-    "/?":         ("显示所有快捷键",                      ""),
-    "/clear":     ("清屏",                               ""),
+    "/report":    ("含屎量分析 + 输出质量",              "当前 session，快速"),
+    "/insights":  ("AI 深度建议",                        "LLM + 知识库，需 API key"),
+    "/sessions":  ("切换 session",                       "claude / opencode / gemini"),
+    "/overview":  ("全局效率报告",                        "所有历史 session 汇总"),
+    "/blame":     ("定位 Cache Miss 元凶",                "扫描 System Prompt"),
+    "/setup":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
+    "/?":         ("帮助",                               ""),
     "/quit":      ("退出",                               ""),
 }
 
@@ -227,19 +222,6 @@ def handle_command(cmd: str) -> bool:
         agent = parts[1] if len(parts) > 1 else None
         _run_sessions(agent)
 
-    elif cmd == "/compare":
-        _run_compare()
-
-    elif cmd == "/settings":
-        from .stoi_config import run_onboard
-        run_onboard()
-
-    elif cmd == "/status":
-        _run_status()
-
-    elif cmd == "/output":
-        _run_output_analysis()
-
     elif cmd == "/overview":
         _run_overview()
 
@@ -284,6 +266,63 @@ def _run_report(llm: bool = False):
     if speak_summary:
         _broadcast_stoi_score(report.avg_stoi_score)
 
+    # ── 多轮趋势分析 ─────────────────────────────────────────────────────────
+    scored = [t for t in report.turns
+              if not t.is_stub and not t.is_baseline and t.role == "assistant"]
+    if len(scored) >= 5:
+        scores = [t.stoi_score for t in scored]
+        inputs = [t.input_tokens + t.cache_read + t.cache_write for t in scored]
+
+        # 找异常轮次（含屎量突增）
+        avg = sum(scores) / len(scores)
+        spikes = [(i, s) for i, s in enumerate(scores) if s > avg + 25 and s > 50]
+
+        # 上下文增长斜率
+        if len(inputs) >= 2 and inputs[0] > 0:
+            growth = (inputs[-1] - inputs[0]) / inputs[0] * 100
+            mid = len(inputs) // 2
+            first_half_avg  = sum(inputs[:mid]) / mid
+            second_half_avg = sum(inputs[mid:]) / (len(inputs) - mid)
+
+            if growth > 100 or spikes:
+                console.print()
+                console.print("  [bold white]📈 多轮趋势[/bold white]")
+                console.print()
+                if growth > 200:
+                    console.print(f"  [red]上下文增长 {growth:.0f}%[/red]  {inputs[0]:,} → {inputs[-1]:,} tokens")
+                    console.print(f"  [dim]→ 建议在第 {len(scored)//2} 轮后运行 /compact[/dim]")
+                elif growth > 100:
+                    console.print(f"  [yellow]上下文增长 {growth:.0f}%[/yellow]  {inputs[0]:,} → {inputs[-1]:,} tokens")
+                    console.print(f"  [dim]→ 如任务目标已切换，考虑开新 session[/dim]")
+
+                if spikes:
+                    for idx, val in spikes[:3]:
+                        console.print(f"  [dim]第 {idx+1} 轮含屎量突升至 {val:.0f}%[/dim]")
+                console.print()
+
+    # ── 输出质量（Yapping/重复/多方案，合并进 report）──────────────────────
+    try:
+        from .stoi_output_analysis import load_session_conversation, analyze_output_quality
+        oa_records = load_session_conversation(Path(state.current_session))
+        if len(oa_records) >= 5:
+            oa = analyze_output_quality(oa_records)
+            if not oa.get("error") and oa.get("output_waste_score", 0) > 10:
+                console.print("  [bold white]📤 输出质量[/bold white]")
+                console.print()
+                score = oa["output_waste_score"]
+                color = "green" if score < 20 else "yellow" if score < 40 else "red"
+                console.print(f"  [dim]输出浪费分[/dim]  [{color}]{score:.0f}/100[/{color}]")
+                if oa["avg_yapping_rate"] > 0.03:
+                    console.print(f"  [yellow]Yapping {oa['avg_yapping_rate']*100:.1f}%[/yellow]  [dim]→ 在 CLAUDE.md 加: '不要总结已完成的操作'[/dim]")
+                if oa["repetition_rate"] > 0.2:
+                    console.print(f"  [yellow]重复输出 {oa['repetition_rate']*100:.0f}%[/yellow]  [dim]→ 任务完成后立即开新 session[/dim]")
+                if oa.get("multi_solution_pct", 0) > 0.2:
+                    console.print(f"  [yellow]多方案浪费 {oa['multi_solution_pct']*100:.0f}%[/yellow]  [dim]→ prompt 中指定: '只给一个最优方案'[/dim]")
+                console.print()
+    except Exception:
+        pass
+
+    # ── AI 改进建议 ────────────────────────────────────────────────────────
     if llm and report.llm_suggestions:
         console.print()
         console.print("  [bold #FFB800]💡 AI 改进建议[/bold #FFB800]  [dim](基于知识库)[/dim]")
@@ -493,7 +532,7 @@ def _run_output_analysis():
 
     console.print()
 
-    # 直接读当前 session 文件
+    # 用当前选定的 session，如果没有或太小就提示用户用 /sessions 选
     session_path = state.current_session
     if not session_path or not Path(session_path).exists():
         files = find_claude_sessions(1)
@@ -501,7 +540,15 @@ def _run_output_analysis():
             console.print("  [yellow]未找到 session 文件[/yellow]")
             return
         session_path = files[0]
-        console.print(f"  [dim]自动选取: {Path(session_path).name}[/dim]")
+
+    # 如果当前 session 太小（< 100KB），给提示
+    size_kb = Path(session_path).stat().st_size // 1024
+    if size_kb < 100:
+        console.print(f"  [dim]当前 session 较小（{size_kb}KB，约 {size_kb//10} 轮）[/dim]")
+        console.print(f"  [dim]用 /sessions 切换到更大的 session 获得更有意义的分析[/dim]")
+        console.print()
+    else:
+        console.print(f"  [dim]{Path(session_path).name[:40]}  ({size_kb}KB)[/dim]")
 
     with console.status(f"[dim]读取并分析对话...[/dim]", spinner="dots"):
         records = load_session_conversation(Path(session_path))
@@ -520,7 +567,8 @@ def _run_output_analysis():
     score = result["output_waste_score"]
     color = "green" if score < 20 else "yellow" if score < 40 else "red"
 
-    console.print(f"  [bold #FFB800]📤 输出质量分析[/bold #FFB800]  [dim]{result['analyzed_turns']} 轮（来自代理模式）[/dim]")
+    session_name = Path(str(session_path)).name[:30]
+    console.print(f"  [bold #FFB800]📤 输出质量分析[/bold #FFB800]  [dim]{result['analyzed_turns']} 轮  |  {session_name}[/dim]")
     console.print()
     console.print(f"  [dim]输出浪费分[/dim]   [{color}]{score:.1f}/100[/{color}]  [dim]（越低越好）[/dim]")
     console.print(f"  [dim]Yapping 率[/dim]   [white]{result['avg_yapping_rate']*100:.1f}%[/white]  [dim]礼貌废话占比[/dim]")
