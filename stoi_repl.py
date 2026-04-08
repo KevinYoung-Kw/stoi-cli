@@ -47,7 +47,9 @@ COMMANDS = {
     "/sessions":  ("列出并切换 session",                 "支持 claude/opencode/gemini"),
     "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
     "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
+    "/research":  ("使用 Tavily 搜索最新资料",            "需配置 TAVILY_API_KEY"),
     "/settings":  ("配置 LLM provider 和 API key",       ""),
+    "/setup":     ("一键配置 MCP，让 Claude Code 直接调用 STOI", ""),
     "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
     "/?":         ("显示所有快捷键",                      ""),
     "/clear":     ("清屏",                               ""),
@@ -106,6 +108,7 @@ def print_welcome():
     )
     console.print()
     console.print("  [dim]/ for commands · ? for shortcuts · Ctrl+D to exit[/dim]")
+    console.print("  [dim]/setup to configure MCP for Claude Code integration[/dim]")
     console.print()
 
 
@@ -169,8 +172,15 @@ def handle_command(cmd: str) -> bool:
     elif cmd == "/status":
         _run_status()
 
+    elif cmd == "/setup":
+        _run_setup()
+
     elif cmd == "/blame":
         _run_blame()
+
+    elif cmd.startswith("/research"):
+        query = cmd[len("/research"):].strip()
+        _run_research(query)
 
     elif cmd == "":
         pass  # 空行不报错
@@ -401,6 +411,90 @@ def _show_session_mini_list(files):
     console.print()
 
 
+def _run_setup():
+    """一键配置 MCP，让 Claude Code 直接调用 STOI"""
+    import shutil
+    console.print()
+    console.print("  [bold #FFB800]⚙ STOI MCP 配置[/bold #FFB800]")
+    console.print()
+
+    mcp_script = Path(__file__).parent / "stoi_mcp.py"
+    if not mcp_script.exists():
+        console.print("  [red]未找到 stoi_mcp.py[/red]")
+        return
+
+    # 检测支持的 Coding Agent
+    agents_found = []
+    claude_settings = Path("~/.claude/settings.json").expanduser()
+    if claude_settings.exists():
+        agents_found.append(("Claude Code", claude_settings))
+
+    if not agents_found:
+        console.print("  [yellow]未检测到支持的 Coding Agent[/yellow]")
+        console.print(f"  [dim]手动添加：在 Claude Code settings.json 的 mcpServers 中加入 stoi[/dim]")
+        _show_mcp_manual(mcp_script)
+        return
+
+    console.print("  检测到以下 Coding Agent，将自动配置 MCP：")
+    console.print()
+    for name, path in agents_found:
+        console.print(f"  [dim]·[/dim] [white]{name}[/white]  [dim]{path}[/dim]")
+    console.print()
+
+    choice = _ask("确认配置？(y/n)", choices=["y", "n"], default="y")
+    if choice != "y":
+        console.print("  [dim]已取消[/dim]")
+        return
+
+    # 写入 Claude Code settings.json
+    for name, settings_path in agents_found:
+        try:
+            data = json.loads(settings_path.read_text(encoding="utf-8"))
+            if "mcpServers" not in data:
+                data["mcpServers"] = {}
+            data["mcpServers"]["stoi"] = {
+                "command": "python3",
+                "args": [str(mcp_script.resolve())],
+                "env": {}
+            }
+            settings_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            console.print(f"  [green]✅ {name} MCP 配置完成[/green]")
+        except Exception as e:
+            console.print(f"  [red]✗ {name} 配置失败: {e}[/red]")
+            _show_mcp_manual(mcp_script)
+            return
+
+    console.print()
+    console.print("  [bold white]重启 Claude Code 后，直接问它：[/bold white]")
+    console.print()
+    console.print('  [dim]"分析一下我最近的 Claude Code session 效率"[/dim]')
+    console.print('  [dim]"我的含屎量怎么样，有什么优化建议？"[/dim]')
+    console.print('  [dim]"帮我分析这段 System Prompt 有没有造成 Cache Miss"[/dim]')
+    console.print()
+    console.print("  Claude Code 会自动调用 STOI 工具返回分析结果。")
+    console.print()
+
+
+def _show_mcp_manual(mcp_script: Path):
+    """显示手动配置说明"""
+    console.print()
+    console.print("  [bold white]手动配置方法：[/bold white]")
+    console.print()
+    console.print('  在 [dim]~/.claude/settings.json[/dim] 中添加：')
+    console.print()
+    config = {
+        "mcpServers": {
+            "stoi": {
+                "command": "python3",
+                "args": [str(mcp_script.resolve())]
+            }
+        }
+    }
+    for line in json.dumps(config, indent=2, ensure_ascii=False).splitlines():
+        console.print(f"  [dim]{line}[/dim]")
+    console.print()
+
+
 def _run_status():
     """显示实时监控状态（需要 stoi start 先跑）"""
     import json
@@ -443,6 +537,34 @@ def _run_status():
             idx = max(0, min(8, int(v / 100 * 8)))
             spark += chars[idx]
         console.print(f"  [dim]最近趋势[/dim]   [#FFB800]{spark}[/#FFB800]")
+    console.print()
+
+
+def _run_research(query: str = ""):
+    """使用 Tavily 进行网络搜索并展示结果"""
+    console.print()
+    if not query:
+        query = _ask("搜索关键词（建议用英文）")
+    if not query:
+        console.print("  [dim]已取消[/dim]")
+        return
+
+    from stoi_tavily import search_web
+    with console.status(f"[dim]搜索中: {query}...[/dim]", spinner="dots"):
+        result = search_web(query, max_results=5, search_depth="advanced")
+
+    if result.startswith("["):
+        console.print(f"  [yellow]{result}[/yellow]")
+    else:
+        console.print("  [bold #FFB800]搜索结果[/bold #FFB800]")
+        console.print()
+        for line in result.splitlines():
+            if line.startswith("## "):
+                console.print(f"  [bold #FFB800]{line.lstrip('#').strip()}[/bold #FFB800]")
+            elif line.strip().startswith("http"):
+                console.print(f"  [dim]{line.strip()}[/dim]")
+            else:
+                console.print(f"  {line}")
     console.print()
 
 

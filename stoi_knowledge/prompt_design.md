@@ -1,5 +1,7 @@
 # Prompt Design 知识库
 
+> 来源：Anthropic 提示工程文档 (docs.anthropic.com); OpenAI structured outputs 最佳实践; Atwood et al. (2024) in-context learning 研究。
+
 ## 核心原则
 
 高效的提示设计遵循 **结构优先、冗余最小** 的原则。提示的每个部分应有明确的用途，格式应最小化视觉冗余。一个优化良好的提示可以在无损质量的情况下节省 15-30% 的 token。

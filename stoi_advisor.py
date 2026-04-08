@@ -23,6 +23,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from stoi_tavily import search_web
+
 KNOWLEDGE_DIR = Path(__file__).parent / "stoi_knowledge"
 
 # ── 知识库工具 ────────────────────────────────────────────────────────────────
@@ -54,6 +56,27 @@ TOOLS = [
                     }
                 },
                 "required": ["topic", "reason"],
+            },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_web",
+            "description": "使用 Tavily 搜索引擎获取最新官方文档、博客或社区最佳实践，当知识库内容不足或需要 2025 最新信息时使用",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词（建议英文以获得更准确的官方文档结果）",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "为什么需要联网搜索（例如：验证某个 beta header 是否存在、查找最新模型阈值）",
+                    }
+                },
+                "required": ["query", "reason"],
             },
         }
     }
@@ -221,16 +244,25 @@ def get_suggestions(report, verbose: bool = False) -> list[str]:
                 messages.append({"role": "assistant", "content": resp.content})
                 tool_results = []
                 for tc in tool_calls:
-                    topic = tc.input.get("topic", "")
+                    tc_name = tc.name
                     reason = tc.input.get("reason", "")
-                    if verbose:
-                        print(f"  [查询知识库] {topic}: {reason}")
-                    knowledge_used.append(topic)
-                    result = search_knowledge(topic)
+                    if tc_name == "search_knowledge":
+                        topic = tc.input.get("topic", "")
+                        if verbose:
+                            print(f"  [查询知识库] {topic}: {reason}")
+                        knowledge_used.append(topic)
+                        result = search_knowledge(topic)
+                    elif tc_name == "search_web":
+                        query = tc.input.get("query", "")
+                        if verbose:
+                            print(f"  [联网搜索] {query}: {reason}")
+                        result = search_web(query, max_results=5)
+                    else:
+                        result = "未知工具"
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": tc.id,
-                        "content": result[:3000],  # 限制长度
+                        "content": result[:4000],  # 限制长度
                     })
                 messages.append({"role": "user", "content": tool_results})
 
@@ -270,16 +302,26 @@ def get_suggestions(report, verbose: bool = False) -> list[str]:
                 ]})
 
                 for tc in tool_calls:
-                    topic = json.loads(tc.function.arguments).get("topic", "")
-                    reason = json.loads(tc.function.arguments).get("reason", "")
-                    if verbose:
-                        print(f"  [查询知识库] {topic}: {reason}")
-                    knowledge_used.append(topic)
-                    result = search_knowledge(topic)
+                    args = json.loads(tc.function.arguments)
+                    reason = args.get("reason", "")
+                    tc_name = tc.function.name
+                    if tc_name == "search_knowledge":
+                        topic = args.get("topic", "")
+                        if verbose:
+                            print(f"  [查询知识库] {topic}: {reason}")
+                        knowledge_used.append(topic)
+                        result = search_knowledge(topic)
+                    elif tc_name == "search_web":
+                        query = args.get("query", "")
+                        if verbose:
+                            print(f"  [联网搜索] {query}: {reason}")
+                        result = search_web(query, max_results=5)
+                    else:
+                        result = "未知工具"
                     messages.append({
                         "role": "tool",
                         "tool_call_id": tc.id,
-                        "content": result[:3000],
+                        "content": result[:4000],
                     })
 
         return ["分析超时，请重试"]

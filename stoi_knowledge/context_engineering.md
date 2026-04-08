@@ -1,5 +1,7 @@
 # Context Engineering 知识库
 
+> 来源：Liu et al. (2023) "Lost in the Middle" (TACL); LLMLingua / LongLLMLingua (Microsoft, EMNLP 2023 / ACL 2024); ProCut (2025); Anthropic 提示优化案例。
+
 ## 核心原则
 
 LLM 的注意力分布不均匀：开头和结尾信息被充分利用，中间信息常被忽视（Lost in the Middle 现象）。即使 token 被付费，被模型忽视的 token 就是浪费。Context engineering 的目标是用有限的 token 量最大化信息利用率。
