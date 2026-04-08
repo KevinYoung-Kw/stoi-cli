@@ -336,16 +336,16 @@ def _run_sessions(filter_agent: Optional[str] = None):
         return
 
     idx = int(choice) - 1
-    if isinstance(display_sessions[idx], Path):
-        state.current_session = display_sessions[idx]
+    if isinstance(sessions[idx], Path):
+        state.current_session = sessions[idx]
         state.current_agent   = selected_agent
-        s = display_sessions[idx]
+        s = sessions[idx]
         state.session_name = f"{s.parent.name[:16]}/{s.stem[:12]}"
     else:
         # OpenCode session
         state.current_session = Path("~/.local/share/opencode/opencode.db").expanduser()
         state.current_agent   = "opencode"
-        state.session_name    = display_sessions[idx].get("title", "")[:30]
+        state.session_name    = sessions[idx].get("title", "")[:30]
 
     console.print(f"  [green]✓[/green] 已切换到: [white]{state.session_name}[/white]")
     console.print()
@@ -537,7 +537,9 @@ def run():
                 continue
 
             # / 开头是命令
-            if raw.startswith("/"):
+            if raw == "/":
+                print_shortcuts()   # bare / shows help
+            elif raw.startswith("/"):
                 if not handle_command(raw):
                     break
             elif raw == "":
