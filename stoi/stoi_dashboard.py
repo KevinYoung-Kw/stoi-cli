@@ -485,7 +485,7 @@ function analyzeTurn(btn, turnIndex) {
     const panel = document.createElement('div');
     panel.className = 'analysis-panel';
     panel.id = `analysis-panel-${turnIndex}`;
-    panel.innerHTML = '<div class="analysis-panel-header">⚡ LLM 分析结果</div>'
+    panel.innerHTML = '<div class="analysis-panel-header"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>LLM 分析结果</div>'
                     + '<div class="analysis-content"><span class="spinner"></span> 正在调用 LLM 分析…</div>';
     td.appendChild(panel);
     panelRow.appendChild(td);
@@ -504,8 +504,8 @@ function analyzeTurn(btn, turnIndex) {
   const turnData = TURN_DATA[turnIndex];
   if (!turnData) {
     document.getElementById(`analysis-panel-${turnIndex}`).querySelector('.analysis-content').innerHTML
-      = '<span style="color:#ef4444">⚠ 无法找到轮次数据</span>';
-    btn.innerHTML = '🔍 分析'; btn.disabled = false; return;
+      = '<span style="color:#ef4444"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>无法找到轮次数据</span>';
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>分析'; btn.disabled = false; return;
   }
 
   const prompt = `分析这一轮 Claude Code 对话的 Token 效率问题。
@@ -544,17 +544,17 @@ Token用量: input=${turnData.input_tokens}, cache=${turnData.cache_read}, outpu
   .then(data => {
     const el = document.getElementById(`analysis-panel-${turnIndex}`).querySelector('.analysis-content');
     if (data.error) {
-      el.innerHTML = `<span style="color:#ef4444">⚠ API 错误: ${escHtml(JSON.stringify(data.error))}</span>`;
+      el.innerHTML = `<span style="color:#ef4444"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>API 错误: ${escHtml(JSON.stringify(data.error))}</span>`;
     } else {
       const text = data.choices?.[0]?.message?.content || '无返回内容';
       el.innerHTML = formatAnalysis(text);
     }
-    btn.innerHTML = '🔄 重新分析'; btn.disabled = false;
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>重新分析'; btn.disabled = false;
   })
   .catch(err => {
     document.getElementById(`analysis-panel-${turnIndex}`).querySelector('.analysis-content').innerHTML
-      = `<span style="color:#ef4444">⚠ API 调用失败: ${escHtml(String(err))}</span>`;
-    btn.innerHTML = '🔍 分析'; btn.disabled = false;
+      = `<span style="color:#ef4444"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>API 调用失败: ${escHtml(String(err))}</span>`;
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>分析'; btn.disabled = false;
   });
 }
 
@@ -612,9 +612,9 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
         out_t   = usage.get("output_tokens", 0)
         usage_chips = (
             f'<span class="usage-chip">📥 input {inp_t:,}</span>'
-            f'<span class="usage-chip">⚡ cache_read {cr_t:,}</span>'
+            f'<span class="usage-chip"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px;margin-right:2px"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>cache_read {cr_t:,}</span>'
             f'<span class="usage-chip">✍️ cache_write {cw_t:,}</span>'
-            f'<span class="usage-chip">📤 output {out_t:,}</span>'
+            f'<span class="usage-chip"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px;margin-right:2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>output {out_t:,}</span>'
         )
 
         rows.append(f"""
@@ -632,7 +632,7 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
   <td class="turn-action">
     <button class="btn-analyze"
             onclick="event.stopPropagation();analyzeTurn(this, {t.turn_index})">
-      🔍 分析
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>分析
     </button>
   </td>
 </tr>
@@ -658,7 +658,7 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
         </div>
       </div>
       <div class="detail-section" style="margin-top:10px">
-        <div class="detail-label">📊 Token 用量</div>
+        <div class="detail-label"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:3px"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Token 用量</div>
         <div>{usage_chips}</div>
       </div>
     </div>
@@ -671,7 +671,7 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
 def _build_fix_cards(analysis: ChainAnalysis) -> str:
     fixes = analysis.actionable_fixes
     if not fixes:
-        return '<div class="empty">✅ 未发现明显的链条级浪费</div>'
+        return '<div class="empty"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>未发现明显的链条级浪费</div>'
 
     cards = []
     for fix in fixes:
@@ -721,7 +721,7 @@ def generate_dashboard(analysis: ChainAnalysis, session_path: Path) -> Path:
     sec_header = f"""
 <div class="header">
   <div class="header-top">
-    <span class="header-emoji">💩</span>
+    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
     <div class="header-title">STOI Dashboard</div>
   </div>
   <div class="header-meta">
@@ -757,7 +757,7 @@ def generate_dashboard(analysis: ChainAnalysis, session_path: Path) -> Path:
 <div class="section">
   <div class="section-title">
     🔁 逐轮分析
-    <span class="section-sub">{analysis.total_turns} 轮 · 点击 🔍 分析 获取 LLM 分析</span>
+    <span class="section-sub">{analysis.total_turns} 轮 · 点击 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>分析 获取 LLM 分析</span>
   </div>
   <table class="turn-table">
     <thead>
@@ -843,7 +843,8 @@ const TURN_DATA    = {json.dumps(turn_data)};
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>💩 STOI Dashboard — {_h(analysis.session_name)}</title>
+<title>STOI Dashboard — {_h(analysis.session_name)}</title>
+<link rel="stylesheet" href="https://unpkg.com/lucide-static@latest/font/lucide.css">
 <style>
 {_CSS}
 </style>
@@ -900,7 +901,7 @@ def _call_llm_for_turn(turn_data: dict) -> str:
             api_key = os.environ.get("DEEPSEEK_API_KEY", "")
 
     if not api_key:
-        return "⚠ 未配置 LLM API Key。请运行 `stoi config` 进行配置。"
+        return "未配置 LLM API Key。请运行 stoi config 进行配置。"
 
     # Build prompt
     user_text    = turn_data.get("user_text", "")[:500]
@@ -1116,7 +1117,7 @@ def serve_dashboard(html_path: Path, open_browser: bool = True) -> None:
 
     from rich.console import Console
     c = Console(highlight=False)
-    c.print(f"\n  [bold #FFB800]💩 STOI Dashboard[/bold #FFB800]")
+    c.print(f"\n  [bold #FFB800]STOI Dashboard[/bold #FFB800]")
     c.print(f"  [dim]HTML:[/dim] [white]{html_path}[/white]")
     c.print(f"  [dim]API :[/dim] [white]http://localhost:{_SERVER_PORT}/api/analyze-turn[/white]")
     c.print(f"  [dim]Ctrl+C 停止服务器[/dim]\n")

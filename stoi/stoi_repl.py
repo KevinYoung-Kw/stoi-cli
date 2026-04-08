@@ -920,15 +920,6 @@ def _run_blame():
             console.print(f"    [dim]{c['fix']}[/dim]")
     console.print()
 
-
-def _run_dashboard():
-    """生成并启动 STOI Dashboard（含 LLM 分析 API 服务器）"""
-    from .stoi_dashboard import generate_and_serve_dashboard
-    generate_and_serve_dashboard(
-        session_path=state.current_session if state.current_session else None
-    )
-
-
 # ── 主循环 ────────────────────────────────────────────────────────────────────
 def run():
     print_welcome()

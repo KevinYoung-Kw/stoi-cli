@@ -300,6 +300,9 @@ def cmd_help() -> None:
 # ── MCP 自动模式检测 ──────────────────────────────────────────────────────────
 def _detect_mcp_mode() -> bool:
     """检测 stdin 是否为 MCP 启动（JSON-RPC initialize），用于 stoi 双模态运行"""
+    if sys.platform == "win32":
+        return False
+
     import json as _json
     import select
 
