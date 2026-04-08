@@ -537,10 +537,10 @@ class DashboardScreen(Screen):
 
     BINDINGS = [
         Binding("q", "go_back", "返回"),
-        Binding("r", "refresh_data", "刷新"),
-        Binding("s", "speak_result", "播报"),
-        Binding("b", "show_blame", "Blame"),
-        Binding("i", "show_insights", "AI洞察"),
+        Binding("r", "refresh_data", "刷新",   priority=True),
+        Binding("s", "speak_result", "播报",   priority=True),
+        Binding("b", "show_blame", "Blame",    priority=True),
+        Binding("i", "show_insights", "AI洞察", priority=True),
         Binding("escape", "go_back", "返回"),
     ]
 

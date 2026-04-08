@@ -1,563 +1,307 @@
 #!/usr/bin/env python3
 """
-stoi.py — STOI 主命令行入口
-Shit Token On Investment
+stoi — Shit Token On Investment
+Token 效率分析工具
 
-用法:
-  python3 stoi.py start      # 启动代理
-  python3 stoi.py stats      # 打印报告 + TTS
-  python3 stoi.py blame      # 找出 Cache 元凶
-  python3 stoi.py analyze    # 离线分析 Claude Code 会话
-  python3 stoi.py tui        # 启动 TUI 仪表盘
-  python3 stoi.py trend      # ASCII 趋势图
-  python3 stoi.py backfill-feedback-validity  # 回填反馈型 token 有效性
-  python3 stoi.py feedback-validity           # 查看反馈型 token 有效性
+命令：
+  stoi report          分析最新 session，输出完整报告
+  stoi report --html   同上，并生成 HTML 报告
+  stoi report --all    分析所有历史 session 汇总
+  stoi report --llm    开启 LLM 深度建议
+  stoi start           启动实时监控代理
+  stoi config          配置 LLM Provider
+  stoi compare         before/after 效果对比
 """
 
-import argparse
-import json
-import os
-import subprocess
 import sys
-from datetime import datetime
+import subprocess
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich.text import Text
 from rich import box
 
 console = Console()
 
-LOG_FILE = Path("~/.stoi/sessions.jsonl").expanduser()
-LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-STOI_LOGO = r"""
+LOGO = r"""
  ███████╗████████╗ ██████╗ ██╗
  ██╔════╝╚══██╔══╝██╔═══██╗██║
  ███████╗   ██║   ██║   ██║██║
  ╚════██║   ██║   ██║   ██║██║
  ███████║   ██║   ╚██████╔╝██║
- ╚══════╝   ╚═╝    ╚═════╝ ╚═╝
-"""
-
-COMMANDS = {
-    "start":    "启动 API 代理（拦截 Claude Code 请求）",
-    "stats":    "打印含屎量统计报告 + TTS 播报",
-    "blame":    "扫描 System Prompt，找 Cache Miss 元凶",
-    "analyze":  "离线分析 ~/.claude/projects/ 会话文件",
-    "insights": "🤖 AI 深度洞察：分析含屎量并给出改进建议",
-    "tui":      "启动实时 TUI 仪表盘",
-    "trend":    "打印多轮含屎量趋势 ASCII 图",
-    "config":   "配置 LLM Provider 和 API Key",
-}
-
-
-def _load_session_records(session: dict) -> list:
-    """统一的 session 加载入口，根据 agent 类型调用对应的 parser"""
-    agent = session.get("agent", "claude_code")
-    path  = session.get("path", "")
-
-    if agent == "claude_code":
-        from stoi_analyze import parse_claude_code_session
-        return parse_claude_code_session(path)
-    elif agent == "proxy":
-        from stoi_analyze import parse_proxy_log
-        return parse_proxy_log(path)
-    elif agent == "opencode":
-        from stoi_tui import parse_opencode_session
-        return parse_opencode_session(session.get("id", ""))
-    elif agent == "gemini":
-        from stoi_tui import parse_gemini_session
-        return parse_gemini_session(Path(path))
-    return []
+ ╚══════╝   ╚═╝    ╚═════╝ ╚═╝"""
 
 
 def print_logo():
-    console.print(Text(STOI_LOGO, style="bold #FFB800"))
-    console.print(
-        "  [bold white]Shit Token On Investment[/bold white]  "
-        "[dim]— 含屎量实时监控系统 v1.1[/dim]\n"
-    )
+    console.print(Text(LOGO, style="bold #FFB800"))
+    console.print("  [bold white]Shit Token On Investment[/bold white]  "
+                  "[dim]— Token 效率分析 v2.0[/dim]\n")
 
 
-def speak(level: str):
-    """macOS TTS 播报"""
-    from stoi_engine import TTS_MESSAGES
-    msg = TTS_MESSAGES.get(level, "")
-    if msg:
+# ── stoi report ───────────────────────────────────────────────────────────────
+def cmd_report(args: list[str]) -> None:
+    from stoi_core import analyze, find_claude_sessions, find_opencode_sessions
+    from stoi_report import render_cli as print_report, render_html as generate_html
+
+    html_mode = "--html" in args
+    llm_mode  = "--llm" in args
+    all_mode  = "--all" in args
+
+    print_logo()
+
+    if all_mode:
+        _report_all(html_mode, llm_mode)
+        return
+
+    # 找 session — 自动选最新或交互选择
+    session_path = None
+    source = "claude_code"
+
+    # 如果直接传了路径
+    direct = [a for a in args if not a.startswith("--") and Path(a).exists()]
+    if direct:
+        session_path = Path(direct[0])
+    else:
+        # 自动选最新
+        files = find_claude_sessions(1)
+        if files:
+            session_path = files[0]
+            console.print(f"[dim]自动选取最新 session: {session_path.parent.name[:20]}/{session_path.stem[:16]}[/dim]\n")
+        else:
+            console.print("[yellow]未找到 Claude Code session[/yellow]")
+            console.print("[dim]请先使用 Claude Code，或运行 stoi start 开启实时监控[/dim]")
+            return
+
+    # 分析
+    with console.status("[dim]分析中...[/dim]", spinner="dots"):
+        report = analyze(session_path, source=source, llm_enabled=llm_mode)
+
+    if not report.valid_turns:
+        console.print("[yellow]session 为空或无法解析[/yellow]")
+        return
+
+    # 输出报告
+    print_report(report)
+
+    # HTML
+    if html_mode:
+        html_path = generate_html(report, Path("~/.stoi/report.html").expanduser())
+        console.print(f"\n[green]✅ HTML 报告已生成:[/green] {html_path}")
         try:
-            subprocess.Popen(["say", "-v", "Ting-Ting", msg])
+            subprocess.Popen(["open", str(html_path)])
         except Exception:
             pass
 
 
-def load_log() -> list[dict]:
-    if not LOG_FILE.exists():
-        return []
-    try:
-        lines = LOG_FILE.read_text(encoding="utf-8").strip().splitlines()
-        records = []
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        return records
-    except Exception:
-        return []
+def _report_all(html_mode: bool, llm_mode: bool) -> None:
+    """分析所有历史 session，输出汇总"""
+    from stoi_core import analyze, find_claude_sessions, STOIReport
+    from stoi_report import generate_html
 
-
-# ── start ────────────────────────────────────────────────────────────────────
-def cmd_start():
-    print_logo()
-    proxy_path = Path(__file__).parent / "stoi_proxy.py"
-    if not proxy_path.exists():
-        console.print("[red]✗ 未找到 stoi_proxy.py[/red]")
-        return
-    console.print("[bold #FFB800]▶ 启动 STOI 实时监控代理...[/bold #FFB800]")
-    console.print("[dim]自动切换 ANTHROPIC_BASE_URL，Ctrl+C 退出后自动恢复[/dim]\n")
-    import subprocess
-    subprocess.run([sys.executable, str(proxy_path)])
-
-
-# ── stats ────────────────────────────────────────────────────────────────────
-def cmd_stats():
-    from stoi_engine import SHIT_EMOJI, SHIT_THRESHOLDS, get_score_color
-
-    print_logo()
-    records = load_log()
-
-    if not records:
-        console.print(Panel(
-            "📭 还没有记录。\n\n"
-            "先运行以下任一命令产生数据:\n"
-            "  [bold white]python3 stoi.py analyze[/bold white]  — 离线分析 Claude Code 会话\n"
-            "  [bold white]python3 stoi.py start[/bold white]    — 启动代理拦截实时请求",
-            title="[bold #FFB800]💩 STOI 统计[/bold #FFB800]",
-            border_style="#FFB800",
-        ))
+    files = find_claude_sessions(10)
+    if not files:
+        console.print("[yellow]未找到任何 session[/yellow]")
         return
 
-    total_input   = sum(r["stoi"]["input_tokens"] for r in records)
-    total_wasted  = sum(r["stoi"]["wasted_tokens"] for r in records)
-    total_output  = sum(r["stoi"]["output_tokens"] for r in records)
-    total_cache   = sum(r["stoi"]["cache_read"] for r in records)
-    avg_score     = round(sum(r["stoi"]["stoi_score"] for r in records) / len(records), 1)
-    hit_rate      = round(total_cache / total_input * 100, 1) if total_input > 0 else 0.0
+    console.print(f"[bold]分析最近 {len(files)} 个 session...[/bold]\n")
 
-    level = "DEEP_SHIT"
-    for lvl, (lo, hi) in SHIT_THRESHOLDS.items():
-        if lo <= avg_score < hi:
-            level = lvl
-            break
+    all_reports = []
+    for f in files:
+        with console.status(f"[dim]{f.stem[:20]}...[/dim]", spinner="dots"):
+            r = analyze(f, llm_enabled=False)
+        if r.valid_turns > 0:
+            all_reports.append(r)
 
-    color = get_score_color(avg_score)
-    emoji = SHIT_EMOJI[level]
+    if not all_reports:
+        console.print("[yellow]所有 session 均为空[/yellow]")
+        return
 
-    # 主统计表格
-    table = Table(
-        title="💩 STOI 含屎量报告",
-        box=box.DOUBLE_EDGE,
-        border_style="#FFB800",
-        title_style="bold #FFB800",
-        show_header=False,
-        padding=(0, 2),
-    )
-    table.add_column("指标", style="bold #FFB800", width=20)
-    table.add_column("数值", style="white bold", width=20)
+    # 汇总表
+    table = Table(title="📊 Session 汇总", box=box.ROUNDED,
+                  header_style="bold #FFB800", border_style="#FFB800")
+    table.add_column("Session",     style="dim",   width=28)
+    table.add_column("轮次",         justify="right", width=6)
+    table.add_column("含屎量",       justify="right", width=8)
+    table.add_column("命中率",       justify="right", width=8)
+    table.add_column("有效率",       justify="right", width=8)
+    table.add_column("花费",         justify="right", width=10)
+    table.add_column("等级",         width=14)
 
-    table.add_row("会话总数",   f"{len(records)} 次")
-    table.add_row(
-        "平均含屎量",
-        Text(f"{avg_score}%  {emoji}  {level}", style=f"bold {color}"),
-    )
-    table.add_row("缓存命中率",  Text(f"{hit_rate}%", style="green bold"))
-    table.add_row("总输入消耗",  f"{total_input:,} tokens")
-    table.add_row("白白浪费",    Text(f"{total_wasted:,} tokens  💩", style="red bold"))
-    table.add_row("有效输出",    f"{total_output:,} tokens")
+    for r in all_reports:
+        from stoi_report import LEVEL_EMOJI, LEVEL_COLORS
+        lc = LEVEL_COLORS.get(r.stoi_level, "white")
+        em = LEVEL_EMOJI.get(r.stoi_level, "")
+        table.add_row(
+            r.session_name[:27],
+            str(r.valid_turns),
+            f"[{lc}]{r.avg_stoi_score:.1f}%[/{lc}]",
+            f"{r.avg_cache_hit_rate:.1f}%",
+            f"{r.effectiveness_rate:.1f}%",
+            f"${r.total_cost_actual:.4f}",
+            f"{em} {r.stoi_level}",
+        )
 
     console.print(table)
 
-    # 等级分布
-    level_counts: dict[str, int] = {}
-    for r in records:
-        lvl = r["stoi"]["level"]
-        level_counts[lvl] = level_counts.get(lvl, 0) + 1
-
-    console.print("\n[bold #FFB800]等级分布:[/bold #FFB800]")
-    for lvl in ["CLEAN", "MILD_SHIT", "SHIT_OVERFLOW", "DEEP_SHIT"]:
-        count = level_counts.get(lvl, 0)
-        if count > 0:
-            pct = round(count / len(records) * 100)
-            bar = "█" * (pct // 5)
-            em = SHIT_EMOJI[lvl]
-            c = get_score_color({"CLEAN": 10, "MILD_SHIT": 40, "SHIT_OVERFLOW": 60, "DEEP_SHIT": 85}[lvl])
-            console.print(f"  [{c}]{em} {lvl:<20}[/{c}]  {count:>4} 次  [{c}]{bar}[/{c}]  {pct}%")
-
-    # TTS 播报
-    console.print(f"\n[dim]🔊 语音播报: {level}...[/dim]")
-    speak(level)
+    # 汇总统计
+    total_cost = sum(r.total_cost_actual for r in all_reports)
+    total_waste = sum(r.waste_cost for r in all_reports)
+    avg_stoi = sum(r.avg_stoi_score for r in all_reports) / len(all_reports)
+    console.print(f"\n  [dim]总花费[/dim] [white]${total_cost:.4f}[/white]  "
+                  f"[dim]无效输出浪费[/dim] [red]${total_waste:.4f}[/red]  "
+                  f"[dim]平均含屎量[/dim] [white]{avg_stoi:.1f}%[/white]\n")
 
 
-# ── blame ────────────────────────────────────────────────────────────────────
-def cmd_blame():
-    from stoi_engine import l3_cache_blame, l1_syntax_waste
-
+# ── stoi start ────────────────────────────────────────────────────────────────
+def cmd_start() -> None:
     print_logo()
-    console.print(Panel(
-        "📋 请将 System Prompt 粘贴到下方\n"
-        "[dim]输入完成后，在新行输入 END 并回车[/dim]",
-        title="[bold #FFB800]🔍 STOI Blame — Cache 元凶分析[/bold #FFB800]",
-        border_style="#FFB800",
-    ))
-
-    lines = []
-    while True:
-        try:
-            line = input()
-        except (EOFError, KeyboardInterrupt):
-            break
-        if line.strip() == "END":
-            break
-        lines.append(line)
-
-    prompt = "\n".join(lines)
-
-    if not prompt.strip():
-        console.print("[yellow]⚠ 未输入内容[/yellow]")
+    proxy_path = Path(__file__).parent / "stoi_proxy.py"
+    if not proxy_path.exists():
+        console.print("[red]未找到 stoi_proxy.py[/red]")
         return
-
-    l3 = l3_cache_blame(prompt)
-    l1 = l1_syntax_waste(prompt)
-
-    console.print("\n[bold #FFB800]═══ L3 缓存击穿分析 ═══[/bold #FFB800]\n")
-
-    if l3["culprits"]:
-        for c in l3["culprits"]:
-            sev_color = {
-                "HIGH": "red",
-                "MEDIUM": "dark_orange",
-                "LOW": "yellow",
-            }.get(c["severity"], "white")
-            console.print(f"  [{sev_color}]⚠ {c['desc']}[/{sev_color}]")
-            console.print(f"    [dim]原因: {c['detail']}[/dim]")
-            console.print(f"    [green]修复: {c['fix']}[/green]")
-            if c["matches"]:
-                console.print(f"    [dim]样例: {c['matches'][0]!r}[/dim]")
-            console.print()
-    else:
-        console.print("  [green]✓ 未发现 Cache Miss 元凶[/green]")
-
-    console.print(f"  综合严重度: [bold]{l3['severity']}[/bold]")
-    console.print(f"  修复建议: {l3['suggestion']}\n")
-
-    console.print("[bold #FFB800]═══ L1 语法废话分析 ═══[/bold #FFB800]\n")
-    if l1["examples"]:
-        for ex in l1["examples"]:
-            console.print(f"  [yellow]⚠ {ex}[/yellow]")
-        console.print(f"\n  预估浪费 token: [red]~{l1['token_estimate']}[/red]")
-        console.print(f"  建议: {l1['suggestion']}\n")
-    else:
-        console.print("  [green]✓ 语法格式干净，无废话[/green]\n")
+    console.print("[bold #FFB800]▶ 启动实时监控代理...[/bold #FFB800]")
+    console.print("[dim]自动切换 ANTHROPIC_BASE_URL → 退出后自动恢复[/dim]\n")
+    subprocess.run([sys.executable, str(proxy_path)])
 
 
-# ── analyze ──────────────────────────────────────────────────────────────────
-def cmd_analyze(args: list[str]):
-    from stoi_analyze import cmd_analyze as _analyze
-    _analyze(args)
-
-
-# ── tui ──────────────────────────────────────────────────────────────────────
-def cmd_tui():
-    from stoi_tui import run_tui as tui_main
-    tui_main()
-
-
-# ── config ───────────────────────────────────────────────────────────────────
-def cmd_config():
+# ── stoi config ───────────────────────────────────────────────────────────────
+def cmd_config(args: list[str]) -> None:
     print_logo()
     from stoi_config import run_onboard, show_config
-    import sys
-    if "--show" in sys.argv:
+    if "--show" in args:
         show_config()
     else:
         run_onboard()
 
 
-# ── insights ─────────────────────────────────────────────────────────────────
-def cmd_insights(args: list = None):
-    print_logo()
-    from stoi_ui import interactive_select
-    from stoi_engine import analyze_session_validity
-    from stoi_insights import run_insights
-
-    args = args or []
-
-    # 如果直接传了路径就跳过交互
-    if args and Path(args[0]).exists():
-        from stoi_analyze import parse_claude_code_session
-        records = parse_claude_code_session(args[0])
-        session_name = Path(args[0]).stem
-    else:
-        # 交互式选择：Agent → Session → 确认
-        session = interactive_select(action="insights")
-        if not session:
-            return
-
-        records = _load_session_records(session)
-        session_name = session.get("name", "")
-
-    if not records:
-        console.print("[yellow]⚠ 会话为空或无法解析[/yellow]")
-        return
-
-    records = analyze_session_validity(records)
-    run_insights(records, session_name)
-
-
-# ── trend ────────────────────────────────────────────────────────────────────
-def cmd_trend():
-    from stoi_engine import get_score_color, SHIT_EMOJI
+# ── stoi compare ──────────────────────────────────────────────────────────────
+def cmd_compare(args: list[str]) -> None:
+    """before/after 对比：选两个 session，展示含屎量变化"""
+    from stoi_core import analyze, find_claude_sessions
+    from stoi_report import LEVEL_EMOJI, LEVEL_COLORS
 
     print_logo()
-    records = load_log()
-
-    if not records:
-        console.print("[yellow]📭 无数据。先运行 stoi analyze 或 stoi start[/yellow]")
+    files = find_claude_sessions(10)
+    if len(files) < 2:
+        console.print("[yellow]需要至少 2 个 session 才能对比[/yellow]")
         return
 
-    scores = [r["stoi"]["stoi_score"] for r in records[-30:]]
-    times  = [r.get("ts", "")[:16] for r in records[-30:]]
+    console.print("[bold white]选择 Before Session（优化前）[/bold white]\n")
+    before_path = _pick_session(files)
+    if not before_path:
+        return
 
-    console.print("[bold #FFB800]📈 含屎量趋势（最近 30 轮）[/bold #FFB800]\n")
+    console.print("\n[bold white]选择 After Session（优化后）[/bold white]\n")
+    after_path = _pick_session(files)
+    if not after_path:
+        return
 
-    # ASCII 柱状图 (垂直)
-    height = 10
-    max_score = 100.0
-    bar_width = 2
+    with console.status("[dim]分析中...[/dim]", spinner="dots"):
+        before = analyze(before_path)
+        after  = analyze(after_path)
 
-    # 绘制
-    col_width = max(bar_width + 1, 4)
-    rows = []
-    for row_i in range(height, 0, -1):
-        threshold = (row_i / height) * max_score
-        row_str = f"  {threshold:3.0f}% │"
-        for score in scores:
-            if score >= threshold:
-                color = get_score_color(score)
-                row_str += f"[{color}]{'█' * bar_width}[/{color}] "
-            else:
-                row_str += "   "
-        rows.append(row_str)
-
-    for r in rows:
-        console.print(r)
-
-    # X 轴
-    console.print("       └" + "───" * len(scores))
-
-    # 最新数据点标注
+    # 对比展示
     console.print()
-    if scores:
-        latest_score = scores[-1]
-        color = get_score_color(latest_score)
-        console.print(f"  最新: [{color}]{latest_score}%[/{color}]  ({times[-1] if times else '—'})")
-        avg = sum(scores) / len(scores)
-        color_avg = get_score_color(avg)
-        console.print(f"  均值: [{color_avg}]{avg:.1f}%[/{color_avg}]")
-        console.print(f"  最高: [red]{max(scores)}%[/red]")
-        console.print(f"  最低: [green]{min(scores)}%[/green]")
+    console.print(Panel.fit("[bold #FFB800]📊 Before / After 对比[/bold #FFB800]",
+                            border_style="#FFB800"))
+    console.print()
 
-
-# ── feedback validity helpers ────────────────────────────────────────────────
-def _print_feedback_summary(summary: dict, title: str):
-    table = Table(title=title, box=box.ROUNDED, border_style="#FFB800")
-    table.add_column("指标", style="cyan")
-    table.add_column("数值", justify="right", style="bright_white")
-    rows = [
-        ("总 Prompt 数", str(summary["total_prompt_count"])),
-        ("有效 Prompt 数", str(summary["valid_prompt_count"])),
-        ("无效 Prompt 数", str(summary["invalid_prompt_count"])),
-        ("总 Input Tokens", str(summary["total_input_tokens"])),
-        ("有效 Input Tokens", str(summary["valid_input_tokens"])),
-        ("无效 Input Tokens", str(summary["invalid_input_tokens"])),
-        ("总 Output Tokens", str(summary["total_output_tokens"])),
-        ("有效 Output Tokens", str(summary["valid_output_tokens"])),
-        ("无效 Output Tokens", str(summary["invalid_output_tokens"])),
-        ("总 Tokens", str(summary["total_tokens"])),
-        ("有效 Tokens", str(summary["valid_tokens"])),
-        ("无效 Tokens", str(summary["invalid_tokens"])),
-        ("有效占比", f"{summary['valid_token_ratio'] * 100:.2f}%"),
-        ("无效占比", f"{summary['invalid_token_ratio'] * 100:.2f}%"),
+    metrics = [
+        ("含屎量",   before.avg_stoi_score,    after.avg_stoi_score,    "%",  True),
+        ("缓存命中", before.avg_cache_hit_rate, after.avg_cache_hit_rate, "%",  False),
+        ("输出有效", before.effectiveness_rate, after.effectiveness_rate, "%",  False),
+        ("实际花费", before.total_cost_actual,  after.total_cost_actual,  "$",  True),
+        ("无效浪费", before.waste_cost,          after.waste_cost,         "$",  True),
     ]
-    for label, value in rows:
-        table.add_row(label, value)
-    console.print(table)
 
-
-def _print_feedback_session_summaries(summaries: list, limit: int = None):
-    if limit is not None:
-        summaries = summaries[:limit]
-
-    table = Table(title="Session 维度有效性汇总", box=box.ROUNDED, border_style="#FFB800")
-    table.add_column("Session", style="cyan")
-    table.add_column("项目", style="dim")
-    table.add_column("Prompt", justify="right")
-    table.add_column("有效 Tokens", justify="right")
-    table.add_column("无效 Tokens", justify="right")
-    table.add_column("有效占比", justify="right")
-    for item in summaries:
-        table.add_row(
-            item["session_id"][:8] + "...",
-            Path(item["project_path"]).name if item["project_path"] else "",
-            str(item["total_prompt_count"]),
-            str(item["valid_tokens"]),
-            str(item["invalid_tokens"]),
-            f"{item['valid_token_ratio'] * 100:.1f}%",
+    for name, bv, av, unit, lower_better in metrics:
+        delta = av - bv
+        improved = (delta < 0) if lower_better else (delta > 0)
+        color = "green" if improved else "red" if delta != 0 else "white"
+        arrow = "↓" if delta < 0 else "↑" if delta > 0 else "→"
+        fmt = ".4f" if unit == "$" else ".1f"
+        console.print(
+            f"  [dim]{name:<10}[/dim]  "
+            f"[white]{bv:{fmt}}{unit}[/white]  →  "
+            f"[{color}]{av:{fmt}}{unit}[/{color}]  "
+            f"[{color}]{arrow} {abs(delta):{fmt}}{unit}[/{color}]"
         )
-    console.print(table)
 
-
-def _print_feedback_rows(rows: list):
-    table = Table(title="Prompt 维度明细", box=box.ROUNDED, border_style="#FFB800")
-    table.add_column("Idx", justify="right", width=4)
-    table.add_column("Prompt", style="bright_white")
-    table.add_column("Input", justify="right", width=8)
-    table.add_column("Output", justify="right", width=8)
-    table.add_column("判定", justify="center", width=8)
-    table.add_column("反馈", style="dim")
-    for row in rows:
-        preview = (row["prompt_text"] or "").replace("\n", " ")
-        if len(preview) > 40:
-            preview = preview[:37] + "..."
-        feedback = (row["feedback_text"] or "").replace("\n", " ")
-        if len(feedback) > 28:
-            feedback = feedback[:25] + "..."
-        table.add_row(
-            str(row["prompt_index"]),
-            preview,
-            str(row["input_tokens"]),
-            str(row["output_tokens"]),
-            "无效" if row["token_effectiveness"] == "invalid" else "有效",
-            feedback,
-        )
-    console.print(table)
-
-
-# ── backfill feedback validity ───────────────────────────────────────────────
-def cmd_backfill_feedback_validity(args: list):
-    from claude_feedback_token_validity import ClaudeFeedbackTokenValidityService
-
-    parser = argparse.ArgumentParser(prog="stoi backfill-feedback-validity", add_help=True)
-    parser.add_argument("--session", "-s", help="会话ID")
-    parser.add_argument("--format", choices=["table", "json"], default="table")
-    parsed = parser.parse_args(args)
-
-    service = ClaudeFeedbackTokenValidityService()
-    result = service.backfill(session_id=parsed.session)
-    if parsed.format == "json":
-        import json
-        console.print_json(json.dumps(result, ensure_ascii=False))
+    console.print()
+    improvement = (before.avg_stoi_score - after.avg_stoi_score) / max(before.avg_stoi_score, 1) * 100
+    if improvement > 0:
+        console.print(f"  [green bold]✅ 含屎量下降 {improvement:.0f}%，优化有效！[/green bold]")
+    elif improvement < -5:
+        console.print(f"  [red]⚠ 含屎量上升 {-improvement:.0f}%，需要检查[/red]")
     else:
-        console.print(f"[green]✓ 已回填 {result['session_count']} 个 session, {result['prompt_count']} 条 prompt[/green]")
+        console.print(f"  [dim]变化不明显（{improvement:+.0f}%）[/dim]")
+    console.print()
 
 
-# ── feedback validity ────────────────────────────────────────────────────────
-def cmd_feedback_validity(args: list):
-    from claude_feedback_token_validity import ClaudeFeedbackTokenValidityService
+def _pick_session(files):
+    table = Table(box=box.SIMPLE, show_header=False)
+    table.add_column("#", style="bold", width=4)
+    table.add_column("时间", style="dim", width=14)
+    table.add_column("名称", width=32)
+    for i, f in enumerate(files[:10], 1):
+        from datetime import datetime
+        mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")
+        table.add_row(str(i), mtime, f"{f.parent.name[:16]}/{f.stem[:14]}")
+    console.print(table)
+    choice = Prompt.ask("请选择", choices=[str(i) for i in range(1, len(files[:10])+1)], default="1")
+    return files[int(choice) - 1]
 
-    parser = argparse.ArgumentParser(prog="stoi feedback-validity", add_help=True)
-    parser.add_argument("--session", "-s", help="会话ID")
-    parser.add_argument("--format", choices=["table", "json"], default="table")
-    parser.add_argument("--limit", type=int, help="结果数量限制")
-    parser.add_argument("--project", help="按项目路径过滤")
-    parser.add_argument("--only", choices=["all", "valid", "invalid"], default="all")
-    parsed = parser.parse_args(args)
 
-    service = ClaudeFeedbackTokenValidityService()
-    rows = service.get_rows(
-        session_id=parsed.session,
-        project_path=parsed.project,
-        limit=parsed.limit if parsed.session else None,
-        only=parsed.only,
-    )
-
-    if parsed.session:
-        summary = service.summarize_rows(rows)
-        if parsed.format == "json":
-            import json
-            console.print_json(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False))
-        else:
-            _print_feedback_summary(summary, f"Session {parsed.session} Token 有效性")
-            _print_feedback_rows(rows)
-    else:
-        summary = service.summarize_rows(rows)
-        session_summaries = service.summarize_by_session(rows)
-        if parsed.format == "json":
-            import json
-            console.print_json(json.dumps({
-                "summary": summary,
-                "session_summaries": session_summaries,
-            }, ensure_ascii=False))
-        else:
-            _print_feedback_summary(summary, "全局 Token 有效性")
-            _print_feedback_session_summaries(session_summaries, limit=parsed.limit)
+# ── stoi tui ─────────────────────────────────────────────────────────────────
+def cmd_tui() -> None:
+    from stoi_tui import run_tui
+    run_tui()
 
 
 # ── help ─────────────────────────────────────────────────────────────────────
-def cmd_help():
+def cmd_help() -> None:
     print_logo()
-    console.print("[bold #FFB800]用法:[/bold #FFB800]\n")
-
-    table = Table(box=box.SIMPLE, border_style="dim", show_header=False, padding=(0, 2))
-    table.add_column("命令", style="bold white", width=16)
-    table.add_column("描述", style="dim", width=50)
-
-    for cmd, desc in COMMANDS.items():
-        table.add_row(f"stoi {cmd}", desc)
-
-    console.print(table)
-    console.print()
+    console.print(Panel(
+        "  [bold #FFB800]stoi report[/bold #FFB800]           分析最新 session\n"
+        "  [bold #FFB800]stoi report --html[/bold #FFB800]    生成 HTML 报告并打开\n"
+        "  [bold #FFB800]stoi report --all[/bold #FFB800]     分析所有历史 session\n"
+        "  [bold #FFB800]stoi report --llm[/bold #FFB800]     开启 AI 深度建议\n"
+        "  [bold #FFB800]stoi report <path>[/bold #FFB800]    分析指定 session 文件\n\n"
+        "  [bold #FFB800]stoi start[/bold #FFB800]            启动实时监控代理\n"
+        "  [bold #FFB800]stoi compare[/bold #FFB800]          before/after 效果对比\n"
+        "  [bold #FFB800]stoi config[/bold #FFB800]           配置 LLM Provider\n"
+        "  [bold #FFB800]stoi tui[/bold #FFB800]              启动交互式 TUI\n",
+        title="[bold]💩 STOI — 用法[/bold]",
+        border_style="#FFB800",
+    ))
 
 
 # ── 入口 ─────────────────────────────────────────────────────────────────────
 def main():
     args = sys.argv[1:]
-
-    if not args:
-        cmd_help()
-        return
-
-    cmd = args[0].lower()
+    cmd  = args[0] if args else "help"
     rest = args[1:]
 
-    cmd_map = {
-        "start":   cmd_start,
-        "stats":   cmd_stats,
-        "blame":   cmd_blame,
-        "tui":     cmd_tui,
-        "trend":   cmd_trend,
-        "help":    cmd_help,
-        "--help":  cmd_help,
-        "-h":      cmd_help,
+    dispatch = {
+        "report":  lambda: cmd_report(rest),
+        "start":   lambda: cmd_start(),
+        "config":  lambda: cmd_config(rest),
+        "compare": lambda: cmd_compare(rest),
+        "tui":     lambda: cmd_tui(),
+        "help":    lambda: cmd_help(),
+        "--help":  lambda: cmd_help(),
+        "-h":      lambda: cmd_help(),
     }
 
-    if cmd == "analyze":
-        cmd_analyze(rest)
-    elif cmd == "insights":
-        cmd_insights(rest)
-    elif cmd == "config":
-        cmd_config()
-    elif cmd in cmd_map:
-        cmd_map[cmd]()
+    fn = dispatch.get(cmd)
+    if fn:
+        fn()
     else:
-        console.print(f"[red]未知命令: {cmd}[/red]")
-        cmd_help()
+        console.print(f"[red]未知命令: {cmd}[/red]  运行 [bold]stoi help[/bold] 查看用法")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
