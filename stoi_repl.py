@@ -227,14 +227,32 @@ def _run_sessions(filter_agent: Optional[str] = None):
 
     # 选 agent（如果有多个）
     if not filter_agent and len(agents_available) > 1:
-        console.print("  [bold #FFB800]选择 Agent[/bold #FFB800]")
-        console.print()
-        for i, (key, name, items) in enumerate(agents_available, 1):
-            count = len(items)
-            console.print(f"  [bold]{i}[/bold]  {name}  [dim]{count} 个 session[/dim]")
-        console.print()
-        choice = _ask("  请选择", choices=[str(i) for i in range(1, len(agents_available)+1)], default="1")
-        selected_agent, _, sessions = agents_available[int(choice)-1]
+        try:
+            import questionary
+            agent_choices = [
+                questionary.Choice(f"{name}  ({len(items)} sessions)", value=key)
+                for key, name, items in agents_available
+            ]
+            selected_key = questionary.select(
+                "选择 Agent",
+                choices=agent_choices,
+                style=questionary.Style([
+                    ("selected", "fg:#FFB800 bold"),
+                    ("pointer", "fg:#FFB800 bold"),
+                    ("question", "fg:white bold"),
+                ])
+            ).ask()
+            if not selected_key:
+                return
+            selected_agent, _, sessions = next(
+                (a, s, items) for a, s, items in agents_available if a == selected_key
+            )
+        except Exception:
+            # fallback
+            for i, (key, name, items) in enumerate(agents_available, 1):
+                console.print(f"  [bold]{i}[/bold]  {name}  [dim]{len(items)} sessions[/dim]")
+            choice = _ask("选择", choices=[str(i) for i in range(1, len(agents_available)+1)], default="1")
+            selected_agent, _, sessions = agents_available[int(choice)-1]
     else:
         selected_agent, _, sessions = agents_available[0]
 
@@ -249,61 +267,70 @@ def _run_sessions(filter_agent: Optional[str] = None):
     table.add_column("名称", width=38)
     table.add_column("", style="dim", width=6)
 
-    page_size = 10
-    page = 0
-    total = len(sessions)
+    try:
+        import questionary
 
-    while True:
-        start = page * page_size
-        end   = min(start + page_size, total)
-        page_sessions = sessions[start:end]
-
-        # 清除之前的表格（重绘）
-        table = Table(box=None, show_header=False, padding=(0, 1))
-        table.add_column("", style="bold", width=4)
-        table.add_column("时间", style="dim", width=14)
-        table.add_column("名称", width=38)
-        table.add_column("", style="dim", width=6)
-
-        for i, s in enumerate(page_sessions, start + 1):
+        def _session_label(s, idx):
             if isinstance(s, Path):
                 mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
-                name  = f"{s.parent.name[:16]}/{s.stem[:16]}"
+                name  = f"{s.parent.name[:16]}/{s.stem[:14]}"
                 size  = f"{s.stat().st_size//1024}K"
-                is_current = (state.current_session == s)
+                marker = "● " if state.current_session == s else "  "
+                return f"{marker}{mtime}  {name:<34}  {size}"
             else:
                 mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
-                name  = s.get("title", "")[:35]
-                size  = ""
-                is_current = False
+                return f"  {mtime}  {s.get('title','')[:40]}"
 
-            marker = "[green]●[/green]" if is_current else " "
-            table.add_row(f"{marker}{i}", mtime, name, size)
+        session_choices = [
+            questionary.Choice(_session_label(s, i), value=i)
+            for i, s in enumerate(sessions[:20])
+        ] + [questionary.Choice("  ─ 取消", value=-1)]
 
-        console.print(table)
+        selected_idx = questionary.select(
+            f"选择 session  ({len(sessions)} 个，↑↓ 导航，Enter 确认)",
+            choices=session_choices,
+            use_shortcuts=False,
+            style=questionary.Style([
+                ("selected", "fg:#FFB800 bold"),
+                ("pointer", "fg:#FFB800 bold"),
+                ("question", "fg:white bold"),
+                ("answer", "fg:#FFB800 bold"),
+            ])
+        ).ask()
 
-        # 分页提示
-        page_hint = ""
-        if total > page_size:
-            page_hint = f"  [dim]第 {page+1}/{(total-1)//page_size+1} 页 · n=下一页 · p=上一页[/dim]\n"
-        console.print(page_hint)
-
-        num_choices = [str(i) for i in range(start+1, end+1)]
-        all_choices = num_choices + ["n", "p", "q"]
-        choice = _ask(f"选择 (1-{total}, n下页 p上页 q取消)", choices=all_choices, default="q")
-
-        if choice == "n":
-            if end < total:
-                page += 1
-            continue
-        elif choice == "p":
-            if page > 0:
-                page -= 1
-            continue
-        elif choice == "q":
+        if selected_idx is None or selected_idx == -1:
             return
-        else:
-            break  # 选了数字
+        choice_num = selected_idx + 1  # 1-indexed for rest of function
+        # override the idx logic below
+        idx = selected_idx
+
+    except Exception:
+        # fallback to number input with pagination
+        page_size, page, total = 10, 0, len(sessions)
+        while True:
+            start, end = page * page_size, min((page+1)*page_size, total)
+            table = Table(box=None, show_header=False, padding=(0,1))
+            table.add_column("", width=4); table.add_column("时间", width=14, style="dim")
+            table.add_column("名称", width=36); table.add_column("", width=6, style="dim")
+            for i, s in enumerate(sessions[start:end], start+1):
+                if isinstance(s, Path):
+                    mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
+                    name = f"{s.parent.name[:14]}/{s.stem[:14]}"
+                    size = f"{s.stat().st_size//1024}K"
+                    marker = "[green]●[/green]" if state.current_session==s else " "
+                else:
+                    mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
+                    name, size, marker = s.get("title","")[:30], "", " "
+                table.add_row(f"{marker}{i}", mtime, name, size)
+            console.print(table)
+            if total > page_size:
+                console.print(f"  [dim]第{page+1}/{(total-1)//page_size+1}页 · n下页 p上页[/dim]\n")
+            nums = [str(i) for i in range(start+1, end+1)]
+            choice = _ask(f"选择(1-{total},n/p翻页,q取消)", choices=nums+["n","p","q"], default="q")
+            if choice=="n" and end<total: page+=1; continue
+            elif choice=="p" and page>0: page-=1; continue
+            elif choice=="q": return
+            else: idx=int(choice)-1; break
 
     if choice == "q":
         return
@@ -470,15 +497,19 @@ def run():
             options = [c for c in commands_list if c.startswith(text)]
             return options[state] if state < len(options) else None
         readline.set_completer(completer)
-        readline.parse_and_bind("tab: complete")
+        readline.set_completer_delims(' ')
+        # macOS uses libedit - needs different binding
+        if 'libedit' in readline.__doc__ or readline.__doc__ is None:
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
 
     except ImportError:
         history_file = None
 
     def _print_statusbar():
         """底部状态栏，仿 Claude Code 风格"""
-        agent_icons = {"claude_code": "🤖", "opencode": "⚡", "gemini": "🔷"}
-        icon = agent_icons.get(state.current_agent, "⧉")
+        icon = "💩"
         session = state.session_name or "未选择 session"
         console.print(
             f"  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]"
