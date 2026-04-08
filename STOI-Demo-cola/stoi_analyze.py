@@ -97,7 +97,7 @@ def parse_claude_code_session(path: str) -> list[dict]:
                 except Exception:
                     ts_str = ts_raw[:19] if ts_raw else "unknown"
 
-                stoi = calc_stoi(usage)
+                stoi = calc_stoi(usage, turn_index=len(records))
 
                 record = {
                     "ts":        ts_str,

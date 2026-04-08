@@ -202,34 +202,83 @@ def l3_cache_blame(system_prompt: str) -> dict:
 
 
 # ── 核心含屎量计算 ───────────────────────────────────────────────────────────────
-def calc_stoi(usage: dict) -> dict:
+def calc_stoi(usage: dict, turn_index: int = -1, session_turns: list = None) -> dict:
     """
-    STOI = (non_cached_input / total_context) * 100
-    
-    Anthropic API 返回:
-      input_tokens              = 未命中缓存的新 token（需要实际计算的部分）
-      cache_read_input_tokens   = 命中缓存的 token（便宜 10x）
-      cache_creation_input_tokens = 写入缓存的 token（贵 1.25x，首次）
-    
-    total_context = input_tokens + cache_read + cache_creation
-    STOI = input_tokens / total_context * 100
-    越低越好（越多命中缓存 = 越省钱 = 越干净）
-    """
-    new_tokens     = usage.get("input_tokens", 0)           # 未命中缓存
-    cache_read     = usage.get("cache_read_input_tokens", 0)   # 命中缓存
-    cache_creation = usage.get("cache_creation_input_tokens", 0)  # 写入缓存
-    output_tokens  = usage.get("output_tokens", 0)
+    含屎量公式 v2 — 区分"正常不命中"与"可避免浪费"
 
-    # 总上下文 token 数（三者之和才是真实发送量）
-    total_context = new_tokens + cache_read + cache_creation
+    核心原则：
+      - 第 0 轮（session 首次请求）：正在建缓存，不算含屎，STOI=0
+      - cache_creation > 0：正在写缓存（首次或失效后重建），不算含屎
+      - 后续轮 cache_read=0 但上轮有 cache_creation：才是真正的 cache miss → 含屎
+
+    Anthropic API 字段：
+      input_tokens                = 未命中缓存的新 token
+      cache_read_input_tokens     = 命中缓存的 token（便宜 10x）
+      cache_creation_input_tokens = 写入缓存的 token（建缓存，贵 1.25x）
+    """
+    new_tokens     = usage.get("input_tokens", 0)
+    cache_read     = usage.get("cache_read_input_tokens", 0)
+    cache_creation = usage.get("cache_creation_input_tokens", 0)
+    output_tokens  = usage.get("output_tokens", 0)
+    total_context  = new_tokens + cache_read + cache_creation
 
     if total_context == 0:
-        stoi_score = 0.0
-        cache_hit_rate = 0.0
-    else:
-        # STOI = 含屎量 = 未命中比例（越高越浪费）
-        stoi_score = round(new_tokens / total_context * 100, 1)
-        cache_hit_rate = round(cache_read / total_context * 100, 1)
+        return {
+            "stoi_score": 0.0, "level": "CLEAN",
+            "input_tokens": 0, "new_tokens": 0, "output_tokens": 0,
+            "cache_read": 0, "cache_creation": 0,
+            "cache_hit_rate": 0.0, "wasted_tokens": 0,
+            "is_baseline": True, "note": "无数据",
+        }
+
+    # ── 判断是否为"正常不命中"轮次 ──────────────────────────────────────────────
+    is_baseline = False
+    note = ""
+
+    # 情况1：第一轮或无法判断轮次 → 建缓存基准轮
+    if turn_index == 0:
+        is_baseline = True
+        note = "首轮建缓存，基准轮不计含屎"
+
+    # 情况2：本轮正在写缓存（cache_creation 占比 > 50%）→ 重建缓存轮
+    elif cache_creation > 0 and cache_creation > cache_read:
+        is_baseline = True
+        note = f"缓存重建轮（写入 {cache_creation:,} tokens）"
+
+    # 情况3：上一轮也是 cache_read=0 的全新对话 → session 首轮
+    elif turn_index == -1 and cache_read == 0 and cache_creation == 0:
+        # 无法判断轮次时，若完全没有缓存信息则跳过
+        is_baseline = True
+        note = "无缓存信息，跳过评分"
+
+    if is_baseline:
+        # 基准轮：score=0，但仍记录数据
+        cache_hit_rate = round(cache_read / total_context * 100, 1) if total_context > 0 else 0.0
+        return {
+            "stoi_score": 0.0, "level": "CLEAN",
+            "input_tokens": total_context, "new_tokens": new_tokens,
+            "output_tokens": output_tokens, "cache_read": cache_read,
+            "cache_creation": cache_creation, "cache_hit_rate": cache_hit_rate,
+            "wasted_tokens": 0, "is_baseline": True, "note": note,
+        }
+
+    # ── 正式计算含屎量 ──────────────────────────────────────────────────────────
+    # 真正的含屎 = 本该命中缓存却没命中的 token
+    # 分母用 total_context（包含 cache_read），体现真实利用率
+    cache_hit_rate = round(cache_read / total_context * 100, 1)
+
+    # 含屎量 = 未命中缓存 / 总上下文
+    # 但要扣除合理的"新增内容"（output_tokens 作为下轮的新 input 是正常的）
+    # 简单版：直接用 (total_context - cache_read) / total_context
+    # 即：未被缓存复用的部分占比
+    raw_shit = (total_context - cache_read) / total_context * 100
+
+    # 调节：如果 cache_creation 很大（说明在积极建缓存），降低惩罚
+    if cache_creation > 0:
+        creation_ratio = cache_creation / total_context
+        raw_shit = raw_shit * (1 - creation_ratio * 0.5)  # 建缓存最多减半惩罚
+
+    stoi_score = round(min(raw_shit, 100.0), 1)
 
     level = "DEEP_SHIT"
     for lvl, (lo, hi) in SHIT_THRESHOLDS.items():
@@ -240,13 +289,15 @@ def calc_stoi(usage: dict) -> dict:
     return {
         "stoi_score":     stoi_score,
         "level":          level,
-        "input_tokens":   total_context,      # 对外展示总上下文
-        "new_tokens":     new_tokens,          # 实际新计算量
+        "input_tokens":   total_context,
+        "new_tokens":     new_tokens,
         "output_tokens":  output_tokens,
         "cache_read":     cache_read,
         "cache_creation": cache_creation,
         "cache_hit_rate": cache_hit_rate,
-        "wasted_tokens":  new_tokens,          # 未命中缓存的 = 浪费的
+        "wasted_tokens":  total_context - cache_read,
+        "is_baseline":    False,
+        "note":           "",
     }
 
 
