@@ -266,6 +266,16 @@ def _run_report(llm: bool = False):
     if speak_summary:
         _broadcast_stoi_score(report.avg_stoi_score)
 
+    # ── 链条分析（tool calls + tool results + 四层优化）──────────────────────
+    try:
+        from .stoi_chain import parse_chain, analyze_chain, render_chain_report
+        chain_turns = parse_chain(Path(state.current_session), max_turns=30)
+        if chain_turns:
+            chain = analyze_chain(chain_turns, Path(state.current_session).name[:30])
+            render_chain_report(chain)
+    except Exception:
+        pass
+
     # ── 多轮趋势分析 ─────────────────────────────────────────────────────────
     scored = [t for t in report.turns
               if not t.is_stub and not t.is_baseline and t.role == "assistant"]
