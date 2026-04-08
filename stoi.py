@@ -262,28 +262,6 @@ def _pick_session(files):
 
 
 # ── help ─────────────────────────────────────────────────────────────────────
-def cmd_research(args: list[str]) -> None:
-    """使用 Tavily 搜索网络资料"""
-    print_logo()
-    query = " ".join(a for a in args if not a.startswith("--")).strip()
-    if not query:
-        query = Prompt.ask("请输入搜索关键词（建议英文）")
-    if not query:
-        console.print("[dim]已取消[/dim]")
-        return
-
-    from stoi_tavily import search_web
-    with console.status(f"[dim]搜索中: {query}...[/dim]", spinner="dots"):
-        result = search_web(query, max_results=5, search_depth="advanced")
-
-    if result.startswith("["):
-        console.print(f"[yellow]{result}[/yellow]")
-    else:
-        console.print("[bold #FFB800]搜索结果[/bold #FFB800]\n")
-        console.print(result)
-    console.print()
-
-
 def cmd_help() -> None:
     print_logo()
     console.print(Panel(
@@ -294,7 +272,6 @@ def cmd_help() -> None:
         "  [bold #FFB800]stoi report <path>[/bold #FFB800]    分析指定 session 文件\n\n"
         "  [bold #FFB800]stoi start[/bold #FFB800]            启动实时监控代理\n"
         "  [bold #FFB800]stoi compare[/bold #FFB800]          before/after 效果对比\n"
-        "  [bold #FFB800]stoi research[/bold #FFB800]         使用 Tavily 搜索最新资料\n"
         "  [bold #FFB800]stoi config[/bold #FFB800]           配置 LLM Provider\n"
         "  [bold #FFB800]stoi tui[/bold #FFB800]              启动交互式 TUI\n",
         title="[bold]💩 STOI — 用法[/bold]",
@@ -320,7 +297,6 @@ def main():
         "start":     lambda: cmd_start(),
         "config":    lambda: cmd_config(rest),
         "compare":   lambda: cmd_compare(rest),
-        "research":  lambda: cmd_research(rest),
         "help":      lambda: cmd_help(),
         "--help":    lambda: cmd_help(),
         "-h":        lambda: cmd_help(),

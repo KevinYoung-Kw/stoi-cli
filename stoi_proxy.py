@@ -134,11 +134,46 @@ def log_and_update(request_body: dict, response_body: dict, stoi: dict):
     global _realtime_stats
 
     ts = datetime.now().isoformat()
+
+    # 提取 thinking content（L5 分析用）
+    thinking_text = ""
+    output_text = ""
+    content_blocks = response_body.get("content", [])
+    for block in content_blocks:
+        if isinstance(block, dict):
+            if block.get("type") == "thinking":
+                thinking_text += block.get("thinking", "")
+            elif block.get("type") == "text":
+                output_text += block.get("text", "")
+
+    # 提取 user message（L2 feedback 用）
+    user_message = ""
+    messages = request_body.get("messages", [])
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                user_message = content[:200]
+            elif isinstance(content, list):
+                for c in content:
+                    if isinstance(c, dict) and c.get("type") == "text":
+                        user_message = c.get("text", "")[:200]
+                        break
+            break
+
     record = {
-        "ts":    ts,
-        "model": request_body.get("model", "unknown"),
-        "stoi":  stoi,
-        "usage": response_body.get("usage", {}),
+        "ts":           ts,
+        "model":        request_body.get("model", "unknown"),
+        "stoi":         stoi,
+        "usage":        response_body.get("usage", {}),
+        "output_text":  output_text[:500] if output_text else "",
+        "user_message": user_message,
+        # L5: thinking token 分析数据
+        "thinking": {
+            "has_thinking":    bool(thinking_text),
+            "thinking_tokens": len(thinking_text.split()) if thinking_text else 0,
+            "thinking_text":   thinking_text[:1000] if thinking_text else "",
+        } if thinking_text else None,
     }
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")

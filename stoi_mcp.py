@@ -30,6 +30,9 @@ import sys
 import os
 from pathlib import Path
 
+# Ensure STOI modules are importable regardless of working directory
+sys.path.insert(0, str(Path(__file__).parent.resolve()))
+
 # MCP protocol over stdin/stdout
 def send(obj: dict):
     print(json.dumps(obj, ensure_ascii=False), flush=True)
@@ -138,7 +141,7 @@ def _tool_latest(with_insights: bool) -> str:
     return _format_report(report, with_insights)
 
 
-def _tool_report(path: str | None, with_insights: bool) -> str:
+def _tool_report(path, with_insights: bool) -> str:
     from stoi_core import analyze, find_claude_sessions
 
     if path:
@@ -155,7 +158,7 @@ def _tool_report(path: str | None, with_insights: bool) -> str:
     return _format_report(report, with_insights)
 
 
-def _tool_insights(path: str | None) -> str:
+def _tool_insights(path=None) -> str:
     from stoi_core import analyze, find_claude_sessions
     from stoi_advisor import get_suggestions
 

@@ -4,6 +4,7 @@ stoi_repl.py — STOI 交互式 REPL 主界面
 参考 Claude Code 的交互设计：极简启动，/ 触发命令，? 展开帮助
 """
 
+import json
 import os
 import sys
 import subprocess
@@ -48,7 +49,6 @@ COMMANDS = {
     "/sessions":  ("列出并切换 session",                 "支持 claude/opencode/gemini"),
     "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
     "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
-    "/research":  ("使用 Tavily 搜索最新资料",            "需配置 TAVILY_API_KEY"),
     "/settings":  ("配置 LLM provider 和 API key",       ""),
     "/setup":     ("一键配置 MCP，让 Claude Code 直接调用 STOI", ""),
     "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
@@ -240,10 +240,6 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/blame":
         _run_blame()
-
-    elif cmd.startswith("/research"):
-        query = cmd[len("/research"):].strip()
-        _run_research(query)
 
     elif cmd == "":
         pass  # 空行不报错
@@ -602,34 +598,6 @@ def _run_status():
             idx = max(0, min(8, int(v / 100 * 8)))
             spark += chars[idx]
         console.print(f"  [dim]最近趋势[/dim]   [#FFB800]{spark}[/#FFB800]")
-    console.print()
-
-
-def _run_research(query: str = ""):
-    """使用 Tavily 进行网络搜索并展示结果"""
-    console.print()
-    if not query:
-        query = _ask("搜索关键词（建议用英文）")
-    if not query:
-        console.print("  [dim]已取消[/dim]")
-        return
-
-    from stoi_tavily import search_web
-    with console.status(f"[dim]搜索中: {query}...[/dim]", spinner="dots"):
-        result = search_web(query, max_results=5, search_depth="advanced")
-
-    if result.startswith("["):
-        console.print(f"  [yellow]{result}[/yellow]")
-    else:
-        console.print("  [bold #FFB800]搜索结果[/bold #FFB800]")
-        console.print()
-        for line in result.splitlines():
-            if line.startswith("## "):
-                console.print(f"  [bold #FFB800]{line.lstrip('#').strip()}[/bold #FFB800]")
-            elif line.strip().startswith("http"):
-                console.print(f"  [dim]{line.strip()}[/dim]")
-            else:
-                console.print(f"  {line}")
     console.print()
 
 
