@@ -132,8 +132,10 @@ def _report_all(html_mode: bool, llm_mode: bool) -> None:
 
     for r in all_reports:
         
-        lc = LEVEL_COLORS.get(r.stoi_level, "white")
-        em = LEVEL_EMOJI.get(r.stoi_level, "")
+        color_map = {"CLEAN": "green", "MILD_SHIT": "yellow", "SHIT_OVERFLOW": "dark_orange", "DEEP_SHIT": "red"}
+        emoji_map = {"CLEAN": "✅", "MILD_SHIT": "🟡", "SHIT_OVERFLOW": "🟠", "DEEP_SHIT": "💩"}
+        lc = color_map.get(r.stoi_level, "white")
+        em = emoji_map.get(r.stoi_level, "")
         table.add_row(
             r.session_name[:27],
             str(r.valid_turns),
@@ -256,9 +258,7 @@ def _pick_session(files):
 
 
 # ── stoi tui ─────────────────────────────────────────────────────────────────
-def cmd_tui() -> None:
-    from stoi_tui import run_tui
-    run_tui()
+
 
 
 # ── help ─────────────────────────────────────────────────────────────────────
@@ -297,7 +297,7 @@ def main():
         "start":   lambda: cmd_start(),
         "config":  lambda: cmd_config(rest),
         "compare": lambda: cmd_compare(rest),
-        "tui":     lambda: cmd_tui(),
+        
         "help":    lambda: cmd_help(),
         "--help":  lambda: cmd_help(),
         "-h":      lambda: cmd_help(),

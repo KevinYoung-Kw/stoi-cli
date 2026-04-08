@@ -45,6 +45,7 @@ COMMANDS = {
     "/report":    ("分析当前 session 的含屎量",          "快速，不调用 LLM"),
     "/insights":  ("AI 深度建议（调用 LLM + 知识库）",   "需要 API key"),
     "/sessions":  ("列出并切换 session",                 "支持 claude/opencode/gemini"),
+    "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
     "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
     "/settings":  ("配置 LLM provider 和 API key",       ""),
     "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
@@ -164,6 +165,9 @@ def handle_command(cmd: str) -> bool:
     elif cmd == "/settings":
         from stoi_config import run_onboard
         run_onboard()
+
+    elif cmd == "/status":
+        _run_status()
 
     elif cmd == "/blame":
         _run_blame()
@@ -394,6 +398,51 @@ def _show_session_mini_list(files):
         name  = f"{f.parent.name[:14]}/{f.stem[:14]}"
         marker = "[green]●[/green]" if state.current_session == f else " "
         console.print(f"  {marker}[bold]{i}[/bold]  [dim]{mtime}[/dim]  {name}")
+    console.print()
+
+
+def _run_status():
+    """显示实时监控状态（需要 stoi start 先跑）"""
+    import json
+    stats_file = Path("~/.stoi/realtime_stats.json").expanduser()
+    console.print()
+
+    if not stats_file.exists():
+        console.print("  [dim]代理未运行。运行 stoi start 开始实时监控。[/dim]")
+        console.print()
+        return
+
+    try:
+        stats = json.loads(stats_file.read_text())
+    except Exception:
+        console.print("  [red]状态文件损坏[/red]")
+        return
+
+    avg = stats.get("avg_stoi", 0)
+    color_map = {"CLEAN": "green", "MILD_SHIT": "yellow", "SHIT_OVERFLOW": "dark_orange", "DEEP_SHIT": "red"}
+    emoji_map = {"CLEAN": "✅", "MILD_SHIT": "🟡", "SHIT_OVERFLOW": "🟠", "DEEP_SHIT": "💩"}
+    level = stats.get("current_level", "CLEAN")
+    color = color_map.get(level, "white")
+    emoji = emoji_map.get(level, "")
+
+    console.print(f"  [bold #FFB800]💩 实时监控状态[/bold #FFB800]  [dim]proxy 运行中[/dim]")
+    console.print()
+    console.print(f"  [dim]会话开始[/dim]   {stats.get('session_start','')[:19]}")
+    console.print(f"  [dim]总请求数[/dim]   [white]{stats.get('total_requests', 0)}[/white]")
+    console.print(f"  [dim]平均含屎量[/dim]  [{color}]{avg:.1f}%  {emoji} {level}[/{color}]")
+    console.print(f"  [dim]累计输入[/dim]   [white]{stats.get('total_input', 0):,}[/white] tokens")
+    console.print(f"  [dim]累计浪费[/dim]   [red]{stats.get('total_wasted', 0):,}[/red] tokens")
+
+    recent = stats.get("recent", [])
+    if recent:
+        from stoi_repl import make_sparkline  # self-import won't work, inline it
+        chars = " ▁▂▃▄▅▆▇█"
+        mn, mx = 0.0, 100.0
+        spark = ""
+        for v in recent[-20:]:
+            idx = max(0, min(8, int(v / 100 * 8)))
+            spark += chars[idx]
+        console.print(f"  [dim]最近趋势[/dim]   [#FFB800]{spark}[/#FFB800]")
     console.print()
 
 
