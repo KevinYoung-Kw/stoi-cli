@@ -40,17 +40,31 @@ class ToolResult:
 
 @dataclass
 class ChainTurn:
-    turn_index:   int
-    timestamp:    float
-    user_text:    str = ""
-    tool_calls:   list[ToolCall] = field(default_factory=list)
-    tool_results: list[ToolResult] = field(default_factory=list)
+    """
+    一个 ReAct 回合 = 一次用户提问 + 它触发的完整 ReAct 链。
+
+    Claude Code 是 Agent，一次用户提问可能触发：
+      tool_call(Glob) → tool_result → tool_call(Read) → tool_result
+      → tool_call(Write) → tool_result → final assistant output
+
+    每个 tool_call 都是独立的 API 请求，但在 STOI 里
+    统一聚合成一个回合来评估，累加所有 API 调用的 token 用量。
+
+    这才是真实的分析单位——用户的一个意图 + 完成它花的所有 token。
+    """
+    turn_index:    int
+    timestamp:     float
+    user_text:     str = ""
+    # 整条 ReAct 链（一个回合内的所有 tool call）
+    tool_calls:    list[ToolCall] = field(default_factory=list)
+    tool_results:  list[ToolResult] = field(default_factory=list)
     assistant_text: str = ""
-    usage:        dict = field(default_factory=dict)
-    # 计算字段
+    api_call_count: int = 1   # 这个回合触发了几次 API 请求（ReAct 步骤数）
+    # 累计 token（跨所有 API 请求汇总）
+    usage:               dict = field(default_factory=dict)
     total_input_tokens:  int = 0
     cache_read_tokens:   int = 0
-    tool_result_tokens:  int = 0   # tool results 占的 token 估算
+    tool_result_tokens:  int = 0
     stoi_score:          float = 0.0
 
 
@@ -82,17 +96,77 @@ def _estimate_tokens(text: str) -> int:
     return cjk + ascii_tokens
 
 
-# ── Session 链条解析 ─────────────────────────────────────────────────────────
+# ── Session 链条解析（以用户提问为边界，聚合完整 ReAct 链）──────────────────
 def parse_chain(session_path: Path, max_turns: int = 50) -> list[ChainTurn]:
     """
-    解析 Claude Code session JSONL，提取完整的链条
-    返回每轮的：user_text + tool_calls + tool_results + assistant_text + usage
+    解析 Claude Code session JSONL。
+
+    关键设计：以"用户提问"为边界，把后续所有 tool_call + tool_result
+    + 多次 assistant response 聚合成一个回合（ChainTurn）。
+
+    一个 ReAct 回合的结束标志：下一条 user 消息出现，且该消息不只包含 tool_result
+    （即用户真正输入了新内容，而不只是 tool result 的回传）。
     """
     turns = []
-    current_assistant_tools: list[ToolCall] = []
-    current_tool_results: list[ToolResult] = []
-    pending_user: str = ""
-    pending_ts: float = 0
+
+    # 当前回合的累积状态
+    cur_user: str = ""
+    cur_ts: float = 0
+    cur_tool_calls: list[ToolCall] = []
+    cur_tool_results: list[ToolResult] = []
+    cur_assistant_text: str = ""
+    cur_api_calls: int = 0
+    # 累计 token
+    cur_input: int = 0
+    cur_cache_read: int = 0
+    cur_cache_write: int = 0
+    cur_output: int = 0
+
+    def _flush_turn():
+        """把当前累积的状态写入 turns"""
+        nonlocal cur_user, cur_ts, cur_tool_calls, cur_tool_results
+        nonlocal cur_assistant_text, cur_api_calls
+        nonlocal cur_input, cur_cache_read, cur_cache_write, cur_output
+
+        if not cur_user and not cur_tool_calls and not cur_assistant_text:
+            return
+        if cur_output == 0:  # 没有实际输出，跳过
+            return
+
+        total = cur_input + cur_cache_read + cur_cache_write
+        tr_tokens = sum(r.output_tokens for r in cur_tool_results)
+
+        turns.append(ChainTurn(
+            turn_index=len(turns),
+            timestamp=cur_ts,
+            user_text=cur_user,
+            tool_calls=list(cur_tool_calls),
+            tool_results=list(cur_tool_results),
+            assistant_text=cur_assistant_text[:600],
+            api_call_count=cur_api_calls,
+            usage={
+                "input_tokens": cur_input,
+                "cache_read_input_tokens": cur_cache_read,
+                "cache_creation_input_tokens": cur_cache_write,
+                "output_tokens": cur_output,
+            },
+            total_input_tokens=total,
+            cache_read_tokens=cur_cache_read,
+            tool_result_tokens=tr_tokens,
+            stoi_score=round((cur_input / total * 100) if total > 0 else 0, 1),
+        ))
+
+        # 重置
+        cur_user = ""
+        cur_ts = 0
+        cur_tool_calls = []
+        cur_tool_results = []
+        cur_assistant_text = ""
+        cur_api_calls = 0
+        cur_input = 0
+        cur_cache_read = 0
+        cur_cache_write = 0
+        cur_output = 0
 
     try:
         with open(session_path, encoding="utf-8") as f:
@@ -117,36 +191,38 @@ def parse_chain(session_path: Path, max_turns: int = 50) -> list[ChainTurn]:
                 if isinstance(ts, str):
                     try:
                         from datetime import datetime
-                        ts = datetime.fromisoformat(ts.replace("Z","+00:00")).timestamp() * 1000
+                        ts = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000
                     except Exception:
                         ts = 0
 
                 if msg_type == "user":
-                    # 收集 user 消息（文本 + tool results）
+                    # 判断这是真正的用户输入，还是只有 tool_result 的回传
                     user_texts = []
+                    new_tool_results = []
                     for c in content:
                         if not isinstance(c, dict):
                             continue
                         if c.get("type") == "text":
                             user_texts.append(c.get("text", ""))
                         elif c.get("type") == "tool_result":
-                            # tool result 是 user 消息里的
-                            res_content = c.get("content", "")
-                            if isinstance(res_content, list):
-                                parts = []
-                                for rc in res_content:
-                                    if isinstance(rc, dict):
-                                        parts.append(rc.get("text", ""))
-                                res_content = "\n".join(parts)
-                            current_tool_results.append(ToolResult(
+                            res = c.get("content", "")
+                            if isinstance(res, list):
+                                res = "\n".join(rc.get("text", "") for rc in res if isinstance(rc, dict))
+                            new_tool_results.append(ToolResult(
                                 tool_id=c.get("tool_use_id", ""),
-                                content=str(res_content)[:3000],
-                                output_tokens=_estimate_tokens(str(res_content)),
-                                is_large=_estimate_tokens(str(res_content)) > 2000,
+                                content=str(res)[:2000],
+                                output_tokens=_estimate_tokens(str(res)),
+                                is_large=_estimate_tokens(str(res)) > 1500,
                             ))
+
                     if user_texts:
-                        pending_user = "\n".join(user_texts)[:500]
-                        pending_ts = float(ts)
+                        # 真正的新用户输入 → 结束上一个回合，开新回合
+                        _flush_turn()
+                        cur_user = "\n".join(user_texts)[:400]
+                        cur_ts = float(ts)
+
+                    # 不管有没有用户文本，tool_results 都归到当前回合
+                    cur_tool_results.extend(new_tool_results)
 
                 elif msg_type == "assistant":
                     usage = msg.get("usage", {})
@@ -154,54 +230,39 @@ def parse_chain(session_path: Path, max_turns: int = 50) -> list[ChainTurn]:
                     out   = usage.get("output_tokens", 0)
                     cr    = usage.get("cache_read_input_tokens", 0)
                     cw_raw = usage.get("cache_creation_input_tokens", 0)
-                    cw = cw_raw if isinstance(cw_raw, int) else 0
+                    cw    = cw_raw if isinstance(cw_raw, int) else 0
 
-                    # 跳过流式占位
+                    # 跳过流式占位（output=0 的中间状态）
                     if out == 0:
                         continue
 
-                    # 收集 assistant 的 tool_use 和文本
-                    assistant_text = ""
+                    cur_api_calls += 1
+                    cur_input      += inp
+                    cur_cache_read += cr
+                    cur_cache_write += cw
+                    cur_output     += out
+
                     for c in content:
                         if not isinstance(c, dict):
                             continue
                         if c.get("type") == "text":
-                            assistant_text += c.get("text", "")
+                            cur_assistant_text += c.get("text", "")
                         elif c.get("type") == "tool_use":
                             inp_data = c.get("input", {})
-                            inp_str  = json.dumps(inp_data, ensure_ascii=False)[:500] if isinstance(inp_data, dict) else str(inp_data)[:500]
-                            current_assistant_tools.append(ToolCall(
+                            inp_str  = json.dumps(inp_data, ensure_ascii=False, separators=(',',':'))[:300] \
+                                       if isinstance(inp_data, dict) else str(inp_data)[:300]
+                            cur_tool_calls.append(ToolCall(
                                 tool_id=c.get("id", ""),
                                 name=c.get("name", ""),
                                 input_str=inp_str,
                                 input_tokens=_estimate_tokens(inp_str),
                             ))
 
-                    total_input = inp + cr + cw
-                    tool_result_tokens = sum(r.output_tokens for r in current_tool_results)
-
-                    turn = ChainTurn(
-                        turn_index=len(turns),
-                        timestamp=float(ts),
-                        user_text=pending_user,
-                        tool_calls=list(current_assistant_tools),
-                        tool_results=list(current_tool_results),
-                        assistant_text=assistant_text[:500],
-                        usage=usage,
-                        total_input_tokens=total_input,
-                        cache_read_tokens=cr,
-                        tool_result_tokens=tool_result_tokens,
-                        stoi_score=round((inp / total_input * 100) if total_input > 0 else 0, 1),
-                    )
-                    turns.append(turn)
-
-                    # 重置
-                    current_assistant_tools = []
-                    current_tool_results   = []
-                    pending_user = ""
-
                     if len(turns) >= max_turns:
                         break
+
+        # 最后一个回合
+        _flush_turn()
 
     except Exception:
         pass
