@@ -166,16 +166,27 @@ def _build_analysis_summary(report) -> str:
 **被用户否定的轮次**{invalid_samples or "  无（或无法判断）"}
 
 ---
-**用户场景**: Claude Code 用户，AI 辅助编程工具
-**不要建议**: 向量数据库、RAG、embedding 等与 Claude Code 无关的方案
-**要建议**: /compact、CLAUDE.md 配置、session 拆分、System Prompt 清理
+**用户场景**: Claude Code 用户（AI 辅助编程工具）
+**用户能控制的**:
+- CLAUDE.md 文件内容（项目记忆文件）
+- 何时运行 /compact（压缩对话历史）
+- 何时开启新 session（避免上下文无限膨胀）
+- 如何描述任务（越清晰越少来回）
 
-请用 search_knowledge 查询（优先 claude_code_skills），结合上面的真实数据给出 3 条具体建议。
+**用户不能控制的（不要建议）**:
+- System Prompt 内容（Claude Code 内部管理）
+- 时间戳注入（工具内部行为，用户无法修改）
+- KV Cache 底层配置
+- 向量数据库、RAG、embedding 等
 
-格式（每条 3-4 行）:
-**[问题名]** 描述
-**操作**: 具体 Claude Code 命令或配置文件改法
-**预期收益**: 节省量"""
+**重要**: 该 session 有效输出率为 {report.effectiveness_rate:.0f}%，这个数字**不代表实际有效性**——Claude Code 的对话内容在工具结果里，LLM 读不到实际代码输出。忽略这个指标，专注 Cache 效率和上下文膨胀。
+
+请用 search_knowledge 查询（只查 claude_code_skills 和 context_engineering），给出 2-3 条 Claude Code 用户**今天能执行**的建议。
+
+格式（每条 4 行以内）:
+**[问题]** 一句话
+**操作**: Claude Code 命令或 CLAUDE.md 配置
+**收益**: 量化"""
 
 
 def get_suggestions(report, verbose: bool = False) -> list[str]:

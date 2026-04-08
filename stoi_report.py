@@ -143,7 +143,11 @@ def render_cli(report: STOIReport) -> None:
 
     overview.add_row("  含屎量",    score_col, stoi_label,                 _bar(report.avg_stoi_score, 100, 20, invert=False))
     overview.add_row("  缓存命中",  hit_col,   "",                         _bar(hit_pct, 100, 20, invert=True))
-    overview.add_row("  有效输出",  eff_col,   f"[dim]({report.valid_turns} scored turns)[/dim]", _bar(eff_pct, 100, 20, invert=True))
+    # 有效输出率：Claude Code session 内容不可读，显示提示而非误导性数字
+    if eff_pct == 0.0 and report.source_tool == "claude_code":
+        overview.add_row("  有效输出", "[dim]N/A[/dim]", "[dim](Claude Code 内容不可读)[/dim]", "")
+    else:
+        overview.add_row("  有效输出",  eff_col, f"[dim]({report.valid_turns} scored turns)[/dim]", _bar(eff_pct, 100, 20, invert=True))
     overview.add_row("  实际花费",  _fmt_dollars(report.total_cost_actual), "", "")
     overview.add_row("  节省费用",  f"[{GREEN}]{_fmt_dollars(report.total_cost_saved)}[/{GREEN}]", "[dim](via cache)[/dim]", "")
     if report.waste_cost > 0:
