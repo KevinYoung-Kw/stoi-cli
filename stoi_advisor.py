@@ -69,9 +69,7 @@ def search_knowledge(topic: str) -> str:
 
 
 def _build_analysis_summary(report) -> str:
-    """把 STOIReport 转成 LLM 可读的摘要"""
-    from stoi_core import STOIReport
-
+    """把 STOIReport 转成 LLM 可读的摘要，包含真实对话片段"""
     scored = [t for t in report.turns
               if not t.is_stub and not t.is_baseline and t.role == "assistant"]
 
@@ -82,54 +80,79 @@ def _build_analysis_summary(report) -> str:
         fa = sum(t.stoi_score for t in scored[:mid]) / mid
         sa = sum(t.stoi_score for t in scored[mid:]) / (len(scored) - mid)
         delta = sa - fa
-        trend = f"{'↑上升' if delta > 5 else '↓下降' if delta < -5 else '→稳定'} {delta:+.1f}%（前半段 {fa:.1f}% → 后半段 {sa:.1f}%）"
+        trend = f"{'↑上升' if delta > 5 else '↓下降' if delta < -5 else '→稳定'} {delta:+.1f}%（{fa:.1f}% → {sa:.1f}%）"
 
-    # 输入增长
+    # 上下文增长
     inputs = [t.input_tokens + t.cache_read + t.cache_write for t in scored]
     growth = ""
     if len(inputs) >= 2 and inputs[0] > 0:
         pct = (inputs[-1] - inputs[0]) / inputs[0] * 100
-        growth = f"上下文从 {inputs[0]:,} → {inputs[-1]:,} tokens（增长 {pct:.0f}%）"
+        growth = f"{inputs[0]:,} → {inputs[-1]:,} tokens（+{pct:.0f}%）"
 
     issues = "\n".join(
-        f"- [{i['severity']}] {i['title']}\n  {i['detail']}" for i in report.issues
+        f"- [{i['severity']}] {i['title']}: {i['detail']}" for i in report.issues
     ) or "- 未发现明显问题"
+
+    # 找含屎量最高的 3 轮真实对话片段
+    worst = sorted(scored, key=lambda t: t.stoi_score, reverse=True)[:3]
+    worst_samples = ""
+    for t in worst:
+        if t.content:
+            # 找对应的 user followup
+            user_next = ""
+            for turn in report.turns:
+                if turn.role == "user" and turn.turn_index > t.turn_index and turn.content:
+                    user_next = turn.content[:80]
+                    break
+            worst_samples += f"\n  [轮{t.turn_index} 含屎量{t.stoi_score:.0f}%]\n"
+            worst_samples += f"  AI输出: {t.content[:150]}...\n"
+            if user_next:
+                worst_samples += f"  用户回应: {user_next}\n"
+            if t.feedback_signal:
+                worst_samples += f"  有效性评估: {t.token_effectiveness} ({t.feedback_signal})\n"
+
+    # 找被否定的轮次样本
+    invalid_samples = ""
+    invalid_turns = [t for t in scored if t.token_effectiveness == "invalid"][:2]
+    for t in invalid_turns:
+        if t.content and t.feedback_signal:
+            invalid_samples += f"\n  [轮{t.turn_index}被否定]\n"
+            invalid_samples += f"  AI: {t.content[:120]}...\n"
+            invalid_samples += f"  用户反应: {t.feedback_signal}\n"
 
     return f"""## STOI 分析数据
 
-**会话信息**
-- 工具：Claude Code，Session：{report.session_name}
-- 模型：{report.model}
-- 总轮次：{report.total_turns}（有效：{report.valid_turns}，流式占位：{report.total_turns - report.valid_turns}）
+**会话**: {report.session_name} | 模型: {report.model}
+**轮次**: {report.total_turns} 总 / {report.valid_turns} 有效
+**花费**: ${report.total_cost_actual:.4f} 实际，cache 节省 ${report.total_cost_saved:.4f}
 
-**L1：KV Cache 效率**
-- 平均含屎量：{report.avg_stoi_score:.1f}%（{report.stoi_level}）
-- 平均缓存命中率：{report.avg_cache_hit_rate:.1f}%
-- 含屎量趋势：{trend or "数据不足"}
-- 上下文增长：{growth or "数据不足"}
-- 总花费：${report.total_cost_actual:.4f}，cache 节省：${report.total_cost_saved:.4f}
+**L1 Cache 效率**
+- 含屎量均值: {report.avg_stoi_score:.1f}% ({report.stoi_level})
+- 缓存命中率: {report.avg_cache_hit_rate:.1f}%
+- 趋势: {trend or "稳定"}
+- 上下文增长: {growth or "正常"}
 
-**L2：输出有效性**
-- 有效率：{report.effectiveness_rate:.1f}%
-- 被用户否定：{report.invalid_turns_count} 轮（浪费 ${report.waste_cost:.4f}）
-- 部分有效：{report.partial_turns_count} 轮
+**L2 输出有效性**
+- 有效率: {report.effectiveness_rate:.1f}% | 被否定: {report.invalid_turns_count} 轮 (${report.waste_cost:.4f})
 
-**检测到的问题**
+**检测问题**
 {issues}
 
-**用户场景**：这是一个 Claude Code 用户（AI 编程工具），不是在做 RAG 应用或构建 LLM 产品。
-建议必须针对 Claude Code 的实际使用场景，例如：
-- 如何配置 CLAUDE.md 减少冗余
-- 何时使用 /compact 压缩对话历史
-- 如何拆分长任务为多个独立 session
-- 哪些内容不应该出现在 System Prompt 里
+**含屎量最高的轮次（真实对话）**{worst_samples or "  无明显高含屎量轮次"}
 
-请用 search_knowledge 查询相关知识（优先查 claude_code_skills，再查其他），然后给出 3 条针对 Claude Code 用户的具体建议。
+**被用户否定的轮次**{invalid_samples or "  无（或无法判断）"}
 
-建议格式（每条，不超过 5 行）：
-**[问题]** 一句话描述问题
-**操作** 具体怎么做（Claude Code 命令或配置，不是通用建议）
-**收益** 预期节省多少"""
+---
+**用户场景**: Claude Code 用户，AI 辅助编程工具
+**不要建议**: 向量数据库、RAG、embedding 等与 Claude Code 无关的方案
+**要建议**: /compact、CLAUDE.md 配置、session 拆分、System Prompt 清理
+
+请用 search_knowledge 查询（优先 claude_code_skills），结合上面的真实数据给出 3 条具体建议。
+
+格式（每条 3-4 行）:
+**[问题名]** 描述
+**操作**: 具体 Claude Code 命令或配置文件改法
+**预期收益**: 节省量"""
 
 
 def get_suggestions(report, verbose: bool = False) -> list[str]:

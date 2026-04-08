@@ -171,54 +171,180 @@ def _calc_cache_score(rec: TurnRecord) -> TurnRecord:
     return rec
 
 
-# ── L2: Feedback Validity ─────────────────────────────────────────────────────
-def classify_feedback(text: str) -> tuple[str, str]:
-    """返回 (label, signal)"""
-    if not text:
-        return "unknown", ""
-    t = text.strip().casefold()
-    for sig in NEGATIVE_SIGNALS:
-        if t.startswith(sig) or (len(t) < 15 and sig in t):
-            return "negative", sig
-    for sig in POSITIVE_SIGNALS:
-        if t.startswith(sig):
-            return "positive", sig
-    for sig in FIXUP_SIGNALS:
-        if t.startswith(sig):
-            return "partial", sig
-    return "unknown", ""
+# ── L2: Feedback Validity（LLM 判断，替代规则匹配）─────────────────────────────
+def _llm_evaluate_batch(pairs: list[dict]) -> list[dict]:
+    """
+    批量用 LLM 判断 AI 输出有效性。
+    pairs: [{"turn_idx": int, "ai_output": str, "user_followup": str, "context": str}]
+    返回: [{"turn_idx": int, "effectiveness": str, "confidence": float, "reason": str}]
+    """
+    if not pairs:
+        return []
+    try:
+        from stoi_config import load_config, get_api_key
+        cfg = load_config()
+        llm = cfg.get("llm", {})
+        provider = llm.get("provider", "")
+        api_key  = llm.get("api_key", "") or get_api_key(provider)
+        model    = llm.get("model", "")
+        base_url = llm.get("base_url", "")
+        if not api_key:
+            return []
+
+        # 构建批量评估 prompt
+        items_text = ""
+        for p in pairs:
+            items_text += f"""
+---轮次 {p['turn_idx']}---
+AI输出（前200字）: {p['ai_output'][:200]}
+用户下一条消息: {p['user_followup'][:150]}
+"""
+
+        prompt = f"""你是对话效率分析师。判断以下每轮 AI 输出对用户是否真正有价值。
+
+任务背景: {pairs[0].get('context', 'AI 编程助手对话')}
+
+{items_text}
+
+对每轮输出，判断：
+- valid: 用户消息在推进任务，AI输出有实质帮助
+- invalid: 用户在纠错/重新提问/AI完全答非所问
+- partial: AI输出部分有用，用户在补充或修正方向
+- unclear: 无法从用户消息判断
+
+注意：
+- 用户情绪（沮丧、兴奋）是重要信号
+- "继续"、"好的"通常是 valid
+- "不对"、"还是不行" 是 invalid
+- 用户问了完全不相关的新问题 → unclear
+
+返回 JSON 数组，每项：{{"turn_idx": N, "effectiveness": "valid/invalid/partial/unclear", "confidence": 0.0-1.0, "reason": "一句话中文"}}
+只输出 JSON，不要其他内容。"""
+
+        if provider == "anthropic":
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            resp = client.messages.create(
+                model=model or "claude-haiku-3-5",  # 用最轻模型控制成本
+                max_tokens=1000,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            text = resp.content[0].text
+        else:
+            from openai import OpenAI
+            url_map = {"qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                       "deepseek": "https://api.deepseek.com/v1"}
+            client = OpenAI(
+                api_key=api_key,
+                base_url=base_url or url_map.get(provider, "https://api.openai.com/v1")
+            )
+            resp = client.chat.completions.create(
+                model=model or "qwen-turbo",  # 用最快模型控制延迟
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1000,
+                response_format={"type": "json_object"} if provider == "openai" else None,
+            )
+            text = resp.choices[0].message.content
+
+        # 解析 JSON
+        import re
+        json_match = re.search(r'\[.*\]', text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group())
+        return json.loads(text)
+
+    except Exception:
+        return []
 
 
-def _apply_feedback(turns: list[TurnRecord]) -> list[TurnRecord]:
-    """用下一条 user 消息标注当前 assistant 轮次的有效性"""
+def _apply_feedback(turns: list[TurnRecord], use_llm: bool = False) -> list[TurnRecord]:
+    """
+    标注每轮 assistant 输出的有效性。
+    use_llm=True: 用 LLM 批量评估（准确，慢，有成本）
+    use_llm=False: 用规则兜底（快，适合无 API key 场景）
+    """
+    # 收集需要评估的轮次对
+    pairs_to_eval = []
+    # 提取任务背景（取前两条 user 消息）
+    context_msgs = [t.content for t in turns if t.role == "user" and t.content][:2]
+    context = " / ".join(context_msgs)[:200] if context_msgs else "AI 编程助手"
+
     for i, rec in enumerate(turns):
-        if rec.role != "assistant" or rec.is_stub:
+        if rec.role != "assistant" or rec.is_stub or rec.is_baseline:
             continue
         # 找下一条 user 消息
         next_user_text = ""
-        for j in range(i + 1, min(i + 3, len(turns))):
-            if turns[j].role == "user":
-                next_user_text = turns[j].content[:100]
+        for j in range(i + 1, min(i + 4, len(turns))):
+            if turns[j].role == "user" and turns[j].content:
+                next_user_text = turns[j].content[:150]
                 break
 
-        label, signal = classify_feedback(next_user_text)
-        rec.feedback_label  = label
-        rec.feedback_signal = signal
-
-        if label == "positive":
-            rec.token_effectiveness = "valid"
-        elif label == "negative":
-            rec.token_effectiveness = "invalid"
-        elif label == "partial":
-            rec.token_effectiveness = "partial"
+        if use_llm and next_user_text and rec.content:
+            pairs_to_eval.append({
+                "turn_idx": i,
+                "ai_output": rec.content,
+                "user_followup": next_user_text,
+                "context": context,
+            })
         else:
-            # 启发式兜底：如果 output 很多但 next user 很短 → 可能有效
-            if rec.output_tokens > 200 and len(next_user_text) < 10:
-                rec.token_effectiveness = "valid"
+            # 规则兜底（快速路径）
+            _apply_rule_feedback(rec, next_user_text)
+
+    # LLM 批量评估（每批最多 10 轮，控制成本）
+    if use_llm and pairs_to_eval:
+        # 只评估含屎量高的轮次或随机采样，控制 API 调用量
+        scored_pairs = [p for p in pairs_to_eval
+                        if not turns[p["turn_idx"]].is_baseline][:10]
+        results = _llm_evaluate_batch(scored_pairs)
+        result_map = {r["turn_idx"]: r for r in results}
+
+        for p in scored_pairs:
+            rec = turns[p["turn_idx"]]
+            if p["turn_idx"] in result_map:
+                r = result_map[p["turn_idx"]]
+                rec.feedback_label      = r.get("effectiveness", "unclear")
+                rec.feedback_signal     = r.get("reason", "")[:80]
+                rec.token_effectiveness = r.get("effectiveness", "unclear")
             else:
-                rec.token_effectiveness = "unknown"
+                _apply_rule_feedback(rec, p["user_followup"])
 
     return turns
+
+
+def _apply_rule_feedback(rec: TurnRecord, next_user_text: str):
+    """规则兜底：快速判断，无需 API"""
+    if not next_user_text:
+        rec.token_effectiveness = "unknown"
+        return
+
+    t = next_user_text.strip().casefold()
+
+    for sig in NEGATIVE_SIGNALS:
+        if t.startswith(sig) or (len(t) < 15 and sig in t):
+            rec.feedback_label      = "negative"
+            rec.feedback_signal     = sig
+            rec.token_effectiveness = "invalid"
+            return
+
+    for sig in POSITIVE_SIGNALS:
+        if t.startswith(sig):
+            rec.feedback_label      = "positive"
+            rec.feedback_signal     = sig
+            rec.token_effectiveness = "valid"
+            return
+
+    for sig in FIXUP_SIGNALS:
+        if t.startswith(sig):
+            rec.feedback_label      = "partial"
+            rec.feedback_signal     = sig
+            rec.token_effectiveness = "partial"
+            return
+
+    # 启发式：output 多但 followup 短 → 可能有效
+    if rec.output_tokens > 300 and len(next_user_text) < 15:
+        rec.token_effectiveness = "valid"
+    else:
+        rec.token_effectiveness = "unknown"
 
 
 # ── L3: Cost Breakdown ────────────────────────────────────────────────────────
@@ -516,7 +642,7 @@ def analyze(
     turns = [_calc_cache_score(t) for t in raw_turns]
 
     # 3. L2: Feedback Validity
-    turns = _apply_feedback(turns)
+    turns = _apply_feedback(turns, use_llm=llm_enabled)
 
     # 4. L3: Cost
     turns = [_calc_cost(t) for t in turns]
