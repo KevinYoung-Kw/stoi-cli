@@ -257,8 +257,24 @@ def _pick_session(files):
     return files[int(choice) - 1]
 
 
-# ── stoi tui ─────────────────────────────────────────────────────────────────
+# ── stoi tui / repl ───────────────────────────────────────────────────────────
+def cmd_repl() -> None:
+    from .stoi_repl import run
+    run()
 
+
+# ── stoi dashboard ───────────────────────────────────────────────────────────
+def cmd_dashboard(args: list[str]) -> None:
+    """Launch the STOI HTML Dashboard with per-turn LLM analysis server."""
+    print_logo()
+
+    from pathlib import Path as _Path
+    from .stoi_dashboard import generate_and_serve_dashboard
+
+    # Allow explicit session path
+    direct = [a for a in args if not a.startswith("--") and _Path(a).exists()]
+    session_path = _Path(direct[0]) if direct else None
+    generate_and_serve_dashboard(session_path=session_path)
 
 
 # ── help ─────────────────────────────────────────────────────────────────────
@@ -273,14 +289,51 @@ def cmd_help() -> None:
         "  [bold #FFB800]stoi start[/bold #FFB800]            启动实时监控代理\n"
         "  [bold #FFB800]stoi compare[/bold #FFB800]          before/after 效果对比\n"
         "  [bold #FFB800]stoi config[/bold #FFB800]           配置 LLM Provider\n"
-        "  [bold #FFB800]stoi tui[/bold #FFB800]              启动交互式 TUI\n",
+        "  [bold #FFB800]stoi tui[/bold #FFB800]              启动交互式 TUI\n"
+        "  [bold #FFB800]stoi dashboard[/bold #FFB800]        可视化 Dashboard + LLM 按轮分析\n"
+        "  [bold #FFB800]stoi dashboard <path>[/bold #FFB800] 分析指定 session\n",
         title="[bold]💩 STOI — 用法[/bold]",
         border_style="#FFB800",
     ))
 
 
+# ── MCP 自动模式检测 ──────────────────────────────────────────────────────────
+def _detect_mcp_mode() -> bool:
+    """检测 stdin 是否为 MCP 启动（JSON-RPC initialize），用于 stoi 双模态运行"""
+    import json as _json
+    import select
+
+    # 终端交互 → 肯定不是 MCP
+    if sys.stdin.isatty():
+        return False
+
+    # 非 tty 时，等待最多 500ms 看是否有 JSON-RPC 消息进来
+    ready, _, _ = select.select([sys.stdin], [], [], 0.5)
+    if not ready:
+        return False
+
+    try:
+        line = sys.stdin.readline()
+        if not line:
+            return False
+        msg = _json.loads(line)
+        if msg.get("jsonrpc") and msg.get("method") == "initialize":
+            # 把第一条消息暂存，供 run_mcp_server 消费
+            sys._mcp_first_message = msg
+            return True
+    except Exception:
+        pass
+    return False
+
+
 # ── 入口 ─────────────────────────────────────────────────────────────────────
 def main():
+    # 双模态：如果被 Claude Code 当作 MCP 启动，自动切到 MCP server 模式
+    if _detect_mcp_mode():
+        from .stoi_mcp import run_mcp_server
+        run_mcp_server()
+        return
+
     args = sys.argv[1:]
 
     # 无参数 → 进入 REPL 交互模式
@@ -297,6 +350,7 @@ def main():
         "start":     lambda: cmd_start(),
         "config":    lambda: cmd_config(rest),
         "compare":   lambda: cmd_compare(rest),
+        "dashboard": lambda: cmd_dashboard(rest),
         "help":      lambda: cmd_help(),
         "--help":    lambda: cmd_help(),
         "-h":        lambda: cmd_help(),

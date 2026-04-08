@@ -94,58 +94,34 @@ export PATH="$HOME/Library/Python/3.9/bin:$PATH"
 
 ## 🚀 快速开始
 
-### 1. 分析最新的 session
-
-```bash
-stoi report
-```
-
-输出示例：
-
-```
-💩 STOI 分析报告
-────────────────────────────────────────
-会话: claude-code-project/abc123
-含屎量: 34.5% (🟡 MILD_SHIT)
-缓存命中: 62.3%
-有效率: 78.9%
-实际花费: $0.1245
-────────────────────────────────────────
-```
-
-### 2. 开启 AI 深度建议
-
-```bash
-stoi report --llm
-```
-
-STOI 会调用 LLM 查询内部知识库，生成如：
-- "System Prompt 中存在时间戳注入，建议移至 user message"
-- "Session 已达 18 轮，建议使用 `/compact` 压缩历史"
-
-### 3. 交互式 REPL
+### 1. 交互式 REPL（推荐）
 
 ```bash
 stoi
 ```
 
-在 REPL 中使用 `/` 命令：
+进入一个极简的终端交互环境，使用 `/` 命令操作：
 
 ```
-❯ /report          # 快速分析
-❯ /insights        # AI 深度建议
-❯ /compare         # before/after 对比
+❯ /report          # 快速分析当前 session
+❯ /insights        # AI 深度建议（需配置 API key）
+❯ /sessions        # 切换要分析的 session
+❯ /overview        # 查看所有历史 session 的全局报告
+❯ /compare         # before/after 效果对比
 ❯ /blame           # 粘贴 System Prompt，定位缓存失效元凶
+❯ /setup           # 一键配置 MCP
 ❯ /quit            # 退出
 ```
 
-### 4. 实时监控代理
+REPL 右下角会显示 `[green]● MCP[/green]`，表示当前 `stoi` 已支持 Claude Code 直接调用。
+
+### 2. 实时监控代理
 
 ```bash
 stoi start
 ```
 
-自动拦截 Claude Code API 请求，实时计算每轮含屎量，数据写入 `~/.stoi/`。
+启动后自动拦截 Claude Code API 请求，实时计算每轮含屎量，数据写入 `~/.stoi/`。
 
 ---
 
@@ -160,6 +136,20 @@ stoi start
 
 ---
 
+## ⌨️ CLI 命令速查
+
+| 命令 | 说明 |
+|------|------|
+| `stoi report` | 分析最新 session |
+| `stoi report --llm` | 开启 AI 深度建议 |
+| `stoi report --html` | 生成 HTML 报告并自动打开 |
+| `stoi report --all` | 汇总最近所有 session |
+| `stoi start` | 启动实时监控代理 |
+| `stoi config` | 配置 LLM Provider |
+| `stoi help` | 查看完整帮助 |
+
+---
+
 ## 🏗️ 架构与海报
 
 <p align="center">
@@ -170,15 +160,23 @@ stoi start
 
 ## 🔌 MCP 配置（可选）
 
-让 Claude Code 直接调用 STOI 分析自己：
+`stoi` 支持**双模态运行**：终端里它是 REPL，被 Claude Code 启动时自动变成 MCP Server。
+
+一键注册：
 
 ```bash
-stoi setup   # 或在 REPL 中输入 /setup
+claude mcp add stoi stoi
 ```
 
-按提示将 `stoi_mcp` 添加到 Claude Code 的 MCP 服务器列表中，即可在对话里直接说：
+> 如果环境找不到 `stoi`，可用 `claude mcp add stoi -- python3 -m stoi`
+>
+> 也可以直接在 REPL 中输入 `/setup`，它会自动帮你完成配置。
+
+注册成功后，在 Claude Code 里直接说：
 
 > "分析本次会话的 token 效率"
+>
+> "我的含屎量怎么样？"
 
 ---
 

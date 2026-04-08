@@ -49,6 +49,7 @@ COMMANDS = {
     "/sessions":  ("切换 session",                       "claude / opencode / gemini"),
     "/overview":  ("全局效率报告",                        "所有历史 session 汇总"),
     "/blame":     ("定位 Cache Miss 元凶",                "扫描 System Prompt"),
+    "/dashboard": ("可视化 Dashboard + LLM 分析",         "浏览器打开，按轮次分析"),
     "/setup":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
     "/?":         ("帮助",                               ""),
     "/quit":      ("退出",                               ""),
@@ -230,6 +231,9 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/blame":
         _run_blame()
+
+    elif cmd == "/dashboard":
+        _run_dashboard()
 
     elif cmd == "":
         pass  # 空行不报错
@@ -887,6 +891,14 @@ def _run_blame():
     console.print()
 
 
+def _run_dashboard():
+    """生成并启动 STOI Dashboard（含 LLM 分析 API 服务器）"""
+    from .stoi_dashboard import generate_and_serve_dashboard
+    generate_and_serve_dashboard(
+        session_path=state.current_session if state.current_session else None
+    )
+
+
 # ── 主循环 ────────────────────────────────────────────────────────────────────
 def run():
     print_welcome()
@@ -921,12 +933,13 @@ def run():
         """底部状态栏，仿 Claude Code 风格"""
         icon = "💩"
         session = state.session_name or "未选择 session"
+        mcp_indicator = "  [green]● MCP[/green]"
         console.print(
             f"  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]"
         )
         console.print(
             f"  [dim]{icon} In[/dim] [white]{session}[/white]  "
-            f"[dim]/ commands · ? help · Ctrl+D exit[/dim]"
+            f"[dim]/ commands · ? help · Ctrl+D exit[/dim]{mcp_indicator}"
         )
 
     while True:

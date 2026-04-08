@@ -294,9 +294,13 @@ def _format_report(report, with_insights: bool) -> str:
 
 
 # ── MCP 协议主循环 ─────────────────────────────────────────────────────────────
-def main():
-    # 初始化握手
-    init_msg = recv()
+def run_mcp_server():
+    """MCP 协议主循环（可被外部导入调用）"""
+    # 检查是否有预读取的初始化消息（由 stoi.py 自动模式检测注入）
+    init_msg = getattr(sys, "_mcp_first_message", None)
+    if init_msg is None:
+        init_msg = recv()
+
     if init_msg.get("method") == "initialize":
         send({
             "jsonrpc": "2.0",
@@ -341,6 +345,10 @@ def main():
             if msg_id:
                 send({"jsonrpc": "2.0", "id": msg_id,
                       "error": {"code": -32601, "message": f"Unknown method: {method}"}})
+
+
+def main():
+    run_mcp_server()
 
 
 if __name__ == "__main__":
