@@ -13,7 +13,8 @@ from datetime import datetime
 from flask import Flask, render_template_string, jsonify, request
 
 from config import ConfigManager, get_openai_client
-from claude_importer import list_claude_sessions, import_session
+from importers import get_importer
+from importers.claude import ClaudeImporter
 from stoi import STOIDatabase, STOIAnalyzer, LLMJudge, Speaker
 
 app = Flask(__name__)
@@ -696,15 +697,16 @@ def index():
 @app.route('/api/sessions')
 def api_sessions():
     try:
-        sessions = list_claude_sessions(limit=20)
+        importer = ClaudeImporter()
+        conversations = importer.get_conversations(limit=20)
         result = []
-        for s in sessions:
-            time_str = datetime.fromtimestamp(s['last_seen'] / 1000).strftime("%b %d, %H:%M")
+        for conv in conversations:
+            time_str = conv.updated_at.strftime("%b %d, %H:%M") if conv.updated_at else "N/A"
             result.append({
-                'id': s['id'],
+                'id': conv.id,
                 'time': time_str,
-                'messages': s['message_count'],
-                'project': Path(s['project']).name
+                'messages': conv.message_count,
+                'project': Path(conv.title).name if conv.title else "Unknown"
             })
         return jsonify(result)
     except Exception as e:
@@ -717,7 +719,8 @@ def api_analyze(session_id: str):
 
     try:
         db = STOIDatabase()
-        import_session(session_id, db)
+        importer = ClaudeImporter()
+        importer.import_to_stoi(session_id, db)
 
         client, model = get_openai_client()
         judge = LLMJudge(client, model)

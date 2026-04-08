@@ -10,6 +10,9 @@ rich>=13.0.0
 # 推荐 - 友好的交互式菜单（支持上下键导航）
 questionary>=2.0.0
 
+# 推荐 - TUI 终端界面（Apple Design）
+textual>=0.45.0
+
 # 推荐 - Web GUI（Apple Design）
 flask>=2.0.0
 

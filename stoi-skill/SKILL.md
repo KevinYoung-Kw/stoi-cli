@@ -111,7 +111,24 @@ python3 stoi.py tts --message "检测到屎山！建议立即清理！"
 > 🗣️ **"警报！检测到屎山！等级C！建议立即清理！"**
 > 🗣️ **"纯净度41分，含屎量59%。注意，你的Token正在变成屎！"**
 
-## 🎨 GUI 界面
+## 🎨 GUI/TUI 界面
+
+### TUI 终端界面（Apple Design）
+
+苹果风格的终端图形界面：
+
+```bash
+# 启动 TUI
+python3 stoi.py gui --mode tui
+# 或
+python3 stoi_tui.py
+```
+
+**特点：**
+- 键盘快捷键 (q-退出, r-刷新, a-分析, s-播报)
+- 左侧会话列表，右侧分析面板
+- 实时显示等级卡片、维度评分、AI 评价
+- 支持多来源切换（Claude、Kimi、OpenAI）
 
 ### Web 界面（Apple Design）
 
@@ -119,9 +136,8 @@ python3 stoi.py tts --message "检测到屎山！建议立即清理！"
 
 ```bash
 # 启动 Web GUI
-python3 stoi.py gui
-
-# 或使用启动器
+python3 stoi.py gui --mode web
+# 或
 python3 stoi_gui.py
 ```
 
@@ -134,10 +150,21 @@ python3 stoi_gui.py
 - 📊 **数据可视化** - 进度条、统计卡片、维度分析
 - 📱 **响应式布局** - 适配各种屏幕尺寸
 
+## 📥 会话来源
+
+支持从以下 AI 工具导入会话：
+
+| 来源 | 状态 | 说明 |
+|------|------|------|
+| Claude Code | ✅ 自动 | 读取 `~/.claude/history.jsonl` |
+| Kimi | 📝 手动 | 需要导出 JSON 文件 |
+| OpenAI | 📝 手动 | 需要导出或使用 API |
+
 ## 🔧 技术栈
 
 - Python 3.9+
 - OpenAI SDK（多提供商支持）
+- Textual（TUI 界面）
 - Flask（Web 界面）
 - SQLite（本地存储）
 - macOS `say` 命令 (TTS)

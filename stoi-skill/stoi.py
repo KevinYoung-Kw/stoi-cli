@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 # 导入配置系统
 sys.path.insert(0, str(Path(__file__).parent))
-from config import ConfigManager, InteractiveConfig, get_openai_client
+from config import get_openai_client
 
 # OpenAI SDK for LLM evaluation (兼容多提供商)
 try:
@@ -566,74 +566,44 @@ def main():
     parser.add_argument("--message", "-m", help="TTS消息")
     parser.add_argument("--provider", "-p", help="指定模型提供商")
     parser.add_argument("--model", help="指定模型")
+    parser.add_argument("--mode", choices=["tui", "web", "auto"], default="auto", help="GUI 模式 (tui/web/auto)")
 
     args = parser.parse_args()
 
     # 配置面板
-    if args.command == "config":
-        manager = ConfigManager()
-        panel = InteractiveConfig(manager)
-        panel.run()
-        return
 
     # 初始化组件
     db = STOIDatabase()
     speaker = Speaker()
 
-    # 加载配置管理器
-    config_manager = ConfigManager()
 
-    # 获取 API 客户端（支持多提供商）
+    # 获取 API 客户端（简化配置，类似 OpenClaw）
     client = None
     model = None
 
-    if args.command not in ["tts", "init", "demo"]:
+    if args.command not in ["tts", "init", "demo", "sessions"]:
         try:
-            # 如果指定了提供商，临时切换
-            if args.provider:
-                if args.provider not in config_manager.config.providers:
-                    print(f"错误：未知的提供商 '{args.provider}'")
-                    print(f"可用提供商: {', '.join(config_manager.config.providers.keys())}")
-                    sys.exit(1)
-                config_manager.set_active_provider(args.provider)
-
-            client, default_model = get_openai_client()
-            model = args.model or default_model
-
+            client, model = get_openai_client(args.provider)
         except ValueError as e:
-            print(f"❌ 错误: {e}")
-
-            # 检查是否有配置文件
-            if config_manager.CONFIG_FILE.exists():
-                print(f"\n📄 检测到配置文件: {config_manager.CONFIG_FILE}")
-                print("已配置的提供商:")
-                for p in config_manager.list_providers():
-                    status = "✓" if p["has_key"] else "✗"
-                    default = " (默认)" if p["is_active"] else ""
-                    print(f"  [{status}] {p['name']}{default}")
-                print("\n💡 建议:")
-                print("  1. 运行 'stoi config' 检查配置")
-                print("  2. 或使用 --provider 指定其他提供商")
-            else:
-                print("\n📝 未检测到配置文件，可用环境变量:")
-                for pid, env_vars in ConfigManager.ENV_MAPPINGS.items():
-                    for var in env_vars:
-                        print(f"  export {var}=your_key_here  # {pid}")
-                print("\n💡 或使用交互式配置: stoi config")
+            print(f"❌ {e}")
             sys.exit(1)
         except ImportError as e:
-            print(f"错误: {e}")
+            print(f"❌ {e}")
             sys.exit(1)
 
     if args.command == "init":
+        from config import get_available_providers
         print("✅ STOI 初始化完成")
         print(f"数据库位置: {db.db_path}")
-        print(f"配置位置: {config_manager.CONFIG_FILE}")
         print(f"Rich UI: {'可用' if RICH_AVAILABLE else '未安装（pip3 install rich）'}")
-        print("\n已配置的提供商:")
-        for p in config_manager.list_providers():
-            status = "●" if p["is_active"] else "○"
-            print(f"  [{status}] {p['name']} ({p['model']})")
+        providers = get_available_providers()
+        if providers:
+            print(f"\n✓ 检测到 {len(providers)} 个已配置的提供商:")
+            for pid, p in providers.items():
+                print(f"  • {p['name']} ({p['default_model']})")
+        else:
+            print("\n⚠️ 未检测到 API Key")
+            print("请设置环境变量: export DASHSCOPE_API_KEY=your_key")
 
     elif args.command == "demo":
         # 创建演示数据
@@ -702,28 +672,63 @@ print(list(fib(10)))
         print("敬请期待 Phase 2！")
 
     elif args.command == "gui":
-        # 启动 Apple Design Web GUI
-        try:
-            from stoi_web_apple import main as web_main
-            web_main()
-        except ImportError:
-            print("❌ 请先安装 Flask: pip3 install flask")
-            sys.exit(1)
+        # 根据模式启动 GUI
+        mode = args.mode if hasattr(args, 'mode') else 'auto'
+
+        if mode == 'tui':
+            # 启动 TUI
+            try:
+                from stoi_tui import main as tui_main
+                tui_main()
+            except ImportError as e:
+                print(f"❌ 无法启动 TUI: {e}")
+                print("请安装 Textual: pip3 install textual")
+                sys.exit(1)
+        else:
+            # 启动 Web GUI
+            try:
+                from stoi_web_apple import main as web_main
+                web_main()
+            except ImportError:
+                print("❌ 请先安装 Flask: pip3 install flask")
+                sys.exit(1)
 
     elif args.command == "sessions":
-        # 从 Claude Code 导入会话列表
-        from claude_importer import list_claude_sessions, import_session
+        # 支持多来源的会话导入
+        from importers import list_supported_importers, get_importer
 
-        sessions = list_claude_sessions(limit=10)
+        # 显示可用的导入源
+        print("\n📥 可用的会话来源:")
+        for imp in list_supported_importers():
+            status = "✅" if get_importer(imp['name'])().is_available() else "❌"
+            print(f"  [{status}] {imp['display_name']}: {imp['description']}")
 
-        if sessions:
-            print("\n💡 操作提示:")
-            print(f"  分析最新会话: stoi analyze {sessions[0]['id']}")
-            print(f"  分析并播报: stoi analyze {sessions[0]['id']} --dramatic")
+        # 默认使用 Claude
+        importer_class = get_importer("claude")
+        if importer_class:
+            importer = importer_class()
+            if importer.is_available():
+                conversations = importer.get_conversations(limit=10)
 
-            # 自动导入到数据库
-            for session in sessions[:3]:  # 导入前 3 个
-                import_session(session['id'], db)
+                print(f"\n💬 最近的 {len(conversations)} 个 Claude 会话:\n")
+                print(f"{'ID':<12} | {'时间':<16} | {'消息':<5} | 项目")
+                print("-" * 80)
+
+                for i, conv in enumerate(conversations, 1):
+                    time_str = conv.updated_at.strftime("%m-%d %H:%M") if conv.updated_at else "N/A"
+                    project = conv.title or "Unknown"
+                    if len(project) > 30:
+                        project = "..." + project[-27:]
+                    marker = "👉 " if i == 1 else "   "
+                    print(f"{marker}{i}. {conv.id[:8]}... | {time_str:<16} | {conv.message_count:3d} msgs | {project}")
+
+                if conversations:
+                    print("\n💡 操作提示:")
+                    print(f"  分析最新会话: stoi analyze {conversations[0].id}")
+                    print(f"  分析并播报: stoi analyze {conversations[0].id} --dramatic")
+            else:
+                print("\n❌ Claude Code 数据不可用")
+                print(f"检查文件: {importer.data_path}")
 
 
 if __name__ == "__main__":
