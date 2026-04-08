@@ -2,13 +2,15 @@
 """
 STOI CLI Skill - Shit Token On Investment
 一个让 Claude Code 能分析自己 Token 效率的 CLI 工具，带 TTS 语音播报
+支持多模型提供商配置，统一使用 OpenAI 兼容协议
 
 Usage:
-    stoi analyze <session_id>    # 分析会话并语音播报结果
+    stoi analyze <session_id>            # 分析会话并语音播报结果
     stoi analyze <session_id> --dashboard  # 使用仪表盘模式
-    stoi blame                   # 找出 Token 刺客
-    stoi stats                   # 查看统计
-    stoi tts "message"           # 测试 TTS 播报
+    stoi config                          # 打开配置面板
+    stoi blame                           # 找出 Token 刺客
+    stoi stats                           # 查看统计
+    stoi tts "message"                   # 测试 TTS 播报
 """
 
 import os
@@ -21,11 +23,16 @@ from datetime import datetime
 from typing import Optional, Dict, List
 from dataclasses import dataclass
 
-# DashScope for LLM evaluation
+# 导入配置系统
+sys.path.insert(0, str(Path(__file__).parent))
+from config import ConfigManager, InteractiveConfig, get_openai_client
+
+# OpenAI SDK for LLM evaluation (兼容多提供商)
 try:
-    import dashscope
+    from openai import OpenAI
 except ImportError:
-    print("请先安装 dashscope: pip3 install dashscope")
+    print("请先安装 openai SDK: pip3 install openai")
+    print("所有模型提供商都通过 OpenAI 兼容协议访问")
     sys.exit(1)
 
 # Rich UI 支持
@@ -204,7 +211,7 @@ class STOIDatabase:
 
 
 class LLMJudge:
-    """LLM 评估器"""
+    """LLM 评估器 - 使用 OpenAI 兼容协议"""
 
     EVAL_PROMPT = """你是一个严格的代码评估专家。请评估以下 AI 助手的回复质量。
 
@@ -223,9 +230,9 @@ class LLMJudge:
 建议: 一句话改进建议
 """
 
-    def __init__(self, api_key: str):
-        dashscope.api_key = api_key
-        self.model = "qwen-max"
+    def __init__(self, client: OpenAI, model: str):
+        self.client = client
+        self.model = model
 
     def evaluate(self, query: str, output: str) -> Evaluation:
         """评估对话"""
@@ -235,13 +242,14 @@ class LLMJudge:
         ]
 
         try:
-            response = dashscope.Generation.call(
+            response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                result_format="message"
+                temperature=0.7,
+                max_tokens=500,
             )
 
-            result_text = response.output.choices[0].message.content
+            result_text = response.choices[0].message.content
             return self._parse_evaluation(result_text)
 
         except Exception as e:
@@ -549,48 +557,98 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="💩 STOI - Shit Token On Investment")
-    parser.add_argument("command", choices=["analyze", "blame", "stats", "tts", "init", "demo"])
+    parser.add_argument("command", choices=["analyze", "blame", "stats", "tts", "init", "demo", "config"])
     parser.add_argument("--session", "-s", help="会话ID")
     parser.add_argument("--dramatic", "-d", action="store_true", help="戏剧化播报")
     parser.add_argument("--dashboard", action="store_true", help="仪表盘模式（需安装 rich）")
     parser.add_argument("--no-rich", action="store_true", help="禁用 Rich UI")
     parser.add_argument("--message", "-m", help="TTS消息")
+    parser.add_argument("--provider", "-p", help="指定模型提供商")
+    parser.add_argument("--model", help="指定模型")
 
     args = parser.parse_args()
+
+    # 配置面板
+    if args.command == "config":
+        manager = ConfigManager()
+        panel = InteractiveConfig(manager)
+        panel.run()
+        return
 
     # 初始化组件
     db = STOIDatabase()
     speaker = Speaker()
 
-    api_key = os.getenv("DASHSCOPE_API_KEY")
-    if not api_key and args.command not in ["tts", "init", "demo"]:
-        print("错误：请设置 DASHSCOPE_API_KEY 环境变量")
-        print("export DASHSCOPE_API_KEY=your_key_here")
-        sys.exit(1)
+    # 加载配置管理器
+    config_manager = ConfigManager()
+
+    # 获取 API 客户端（支持多提供商）
+    client = None
+    model = None
+
+    if args.command not in ["tts", "init", "demo"]:
+        try:
+            # 如果指定了提供商，临时切换
+            if args.provider:
+                if args.provider not in config_manager.config.providers:
+                    print(f"错误：未知的提供商 '{args.provider}'")
+                    print(f"可用提供商: {', '.join(config_manager.config.providers.keys())}")
+                    sys.exit(1)
+                config_manager.set_active_provider(args.provider)
+
+            client, default_model = get_openai_client()
+            model = args.model or default_model
+
+        except ValueError as e:
+            print(f"错误: {e}")
+            print("\n可用的环境变量:")
+            for pid, env_vars in ConfigManager.ENV_MAPPINGS.items():
+                for var in env_vars:
+                    print(f"  export {var}=your_key_here  # {pid}")
+            print("\n或使用交互式配置: stoi config")
+            sys.exit(1)
+        except ImportError as e:
+            print(f"错误: {e}")
+            sys.exit(1)
 
     if args.command == "init":
         print("✅ STOI 初始化完成")
         print(f"数据库位置: {db.db_path}")
+        print(f"配置位置: {config_manager.CONFIG_FILE}")
         print(f"Rich UI: {'可用' if RICH_AVAILABLE else '未安装（pip3 install rich）'}")
+        print("\n已配置的提供商:")
+        for p in config_manager.list_providers():
+            status = "●" if p["is_active"] else "○"
+            print(f"  [{status}] {p['name']} ({p['model']})")
 
     elif args.command == "demo":
         # 创建演示数据
         session_id = f"demo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         db.create_session(session_id)
         db.add_message(session_id, 'user', '写一个Python函数，计算斐波那契数列', 20)
-        db.add_message(session_id, 'assistant', '''这是一个高效的斐波那契函数：\n\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        yield a\n        a, b = b, a + b\n\n# 使用\nprint(list(fib(10)))\n\n时间复杂度 O(n)，空间复杂度 O(1)。''', 150)
+        db.add_message(session_id, 'assistant', '''这是一个高效的斐波那契函数：
+
+def fib(n):
+    a, b = 0, 1
+    for _ in range(n):
+        yield a
+        a, b = b, a + b
+
+# 使用
+print(list(fib(10)))
+
+时间复杂度 O(n)，空间复杂度 O(1)。''', 150)
 
         print(f"\n🎮 STOI 演示模式")
         print(f"会话ID: {session_id}\n")
 
-        if api_key:
-            judge = LLMJudge(api_key)
+        if client:
+            judge = LLMJudge(client, model)
             use_rich = not args.no_rich and RICH_AVAILABLE
             analyzer = STOIAnalyzer(db, judge, speaker, use_rich=use_rich)
             analyzer.analyze_session(session_id, dashboard=args.dashboard)
         else:
-            print("提示: 设置 DASHSCOPE_API_KEY 可查看完整分析")
-            print("export DASHSCOPE_API_KEY=sk-xxxxx")
+            print("提示: 运行 'stoi config' 配置模型提供商，或设置环境变量")
 
     elif args.command == "analyze":
         session_id = args.session
@@ -598,7 +656,12 @@ def main():
             print("错误：请指定会话ID (--session)")
             sys.exit(1)
 
-        judge = LLMJudge(api_key)
+        if not client:
+            print("错误：未配置模型提供商")
+            print("运行: stoi config")
+            sys.exit(1)
+
+        judge = LLMJudge(client, model)
         use_rich = not args.no_rich and RICH_AVAILABLE
         analyzer = STOIAnalyzer(db, judge, speaker, use_rich=use_rich)
         analyzer.analyze_session(session_id, dramatic=args.dramatic, dashboard=args.dashboard)
