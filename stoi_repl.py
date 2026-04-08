@@ -13,7 +13,20 @@ from typing import Optional
 
 from rich.console import Console
 from rich.text import Text
-from rich.prompt import Prompt
+def _ask(prompt_text: str, choices: list = None, default: str = "") -> str:
+    """readline 兼容的输入，支持 Tab/上下键历史"""
+    if choices:
+        hint = f"[{'/'.join(choices[:6])}{'...' if len(choices)>6 else ''}]"
+        try:
+            val = input(f"  {prompt_text} {hint}: ").strip() or default
+            return val if (not choices or val in choices) else default
+        except (EOFError, KeyboardInterrupt):
+            return "q" if "q" in (choices or []) else default
+    else:
+        try:
+            return input(f"  {prompt_text}: ").strip() or default
+        except (EOFError, KeyboardInterrupt):
+            return default
 from rich.live import Live
 from rich.table import Table
 from rich import box
@@ -220,7 +233,7 @@ def _run_sessions(filter_agent: Optional[str] = None):
             count = len(items)
             console.print(f"  [bold]{i}[/bold]  {name}  [dim]{count} 个 session[/dim]")
         console.print()
-        choice = Prompt.ask("  请选择", choices=[str(i) for i in range(1, len(agents_available)+1)], default="1")
+        choice = _ask("  请选择", choices=[str(i) for i in range(1, len(agents_available)+1)], default="1")
         selected_agent, _, sessions = agents_available[int(choice)-1]
     else:
         selected_agent, _, sessions = agents_available[0]
@@ -236,29 +249,61 @@ def _run_sessions(filter_agent: Optional[str] = None):
     table.add_column("名称", width=38)
     table.add_column("", style="dim", width=6)
 
-    display_sessions = sessions[:15] if isinstance(sessions[0], Path) else sessions[:15]
+    page_size = 10
+    page = 0
+    total = len(sessions)
 
-    for i, s in enumerate(display_sessions[:10], 1):
-        if isinstance(s, Path):
-            mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
-            name  = f"{s.parent.name[:16]}/{s.stem[:16]}"
-            size  = f"{s.stat().st_size//1024}K"
-            is_current = (state.current_session == s)
+    while True:
+        start = page * page_size
+        end   = min(start + page_size, total)
+        page_sessions = sessions[start:end]
+
+        # 清除之前的表格（重绘）
+        table = Table(box=None, show_header=False, padding=(0, 1))
+        table.add_column("", style="bold", width=4)
+        table.add_column("时间", style="dim", width=14)
+        table.add_column("名称", width=38)
+        table.add_column("", style="dim", width=6)
+
+        for i, s in enumerate(page_sessions, start + 1):
+            if isinstance(s, Path):
+                mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
+                name  = f"{s.parent.name[:16]}/{s.stem[:16]}"
+                size  = f"{s.stat().st_size//1024}K"
+                is_current = (state.current_session == s)
+            else:
+                mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
+                name  = s.get("title", "")[:35]
+                size  = ""
+                is_current = False
+
+            marker = "[green]●[/green]" if is_current else " "
+            table.add_row(f"{marker}{i}", mtime, name, size)
+
+        console.print(table)
+
+        # 分页提示
+        page_hint = ""
+        if total > page_size:
+            page_hint = f"  [dim]第 {page+1}/{(total-1)//page_size+1} 页 · n=下一页 · p=上一页[/dim]\n"
+        console.print(page_hint)
+
+        num_choices = [str(i) for i in range(start+1, end+1)]
+        all_choices = num_choices + ["n", "p", "q"]
+        choice = _ask(f"选择 (1-{total}, n下页 p上页 q取消)", choices=all_choices, default="q")
+
+        if choice == "n":
+            if end < total:
+                page += 1
+            continue
+        elif choice == "p":
+            if page > 0:
+                page -= 1
+            continue
+        elif choice == "q":
+            return
         else:
-            mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
-            name  = s.get("title", "")[:35]
-            size  = ""
-            is_current = False
-
-        marker = "[green]●[/green]" if is_current else " "
-        table.add_row(f"{marker}{i}", mtime, name, size)
-
-    console.print(table)
-    console.print()
-
-    choices = [str(i) for i in range(1, min(len(display_sessions), 10)+1)] + ["q"]
-    choice = Prompt.ask(f"  选择 session (1-{len(display_sessions[:10])}, q=取消)",
-                        choices=choices, default="1")
+            break  # 选了数字
 
     if choice == "q":
         return
@@ -294,12 +339,12 @@ def _run_compare():
     # 选 before
     console.print("  [dim]Before（优化前）：[/dim]")
     _show_session_mini_list(files)
-    b_choice = Prompt.ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="2")
+    b_choice = _ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="2")
 
     console.print()
     console.print("  [dim]After（优化后）：[/dim]")
     _show_session_mini_list(files)
-    a_choice = Prompt.ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="1")
+    a_choice = _ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="1")
 
     b_path = files[int(b_choice)-1]
     a_path = files[int(a_choice)-1]
@@ -430,12 +475,23 @@ def run():
     except ImportError:
         history_file = None
 
+    def _print_statusbar():
+        """底部状态栏，仿 Claude Code 风格"""
+        agent_icons = {"claude_code": "🤖", "opencode": "⚡", "gemini": "🔷"}
+        icon = agent_icons.get(state.current_agent, "⧉")
+        session = state.session_name or "未选择 session"
+        console.print(
+            f"  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]"
+        )
+        console.print(
+            f"  [dim]{icon} In[/dim] [white]{session}[/white]  "
+            f"[dim]/ commands · ? help · Ctrl+D exit[/dim]"
+        )
+
     while True:
         try:
-            # 提示符：当前 session 名
-            session_hint = f"[dim]{state.session_name}[/dim] " if state.session_name else ""
-            console.print(f"  {session_hint}", end="")
-            raw = input("> ").strip()
+            _print_statusbar()
+            raw = input("  ❯ ").strip()
 
             if history_file:
                 try:
