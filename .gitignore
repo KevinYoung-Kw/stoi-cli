@@ -34,3 +34,15 @@ Thumbs.db
 .stoi/
 *.jsonl
 *.log
+
+# Temporary/backup files
+.~*.docx
+
+# Design documents (generated)
+STOI-Technical-Design-v1.0.docx
+STOI-prd.md
+meta_prompt.md
+
+# Generation scripts
+generate-stoi-doc.js
+generate_stoi_doc.py
