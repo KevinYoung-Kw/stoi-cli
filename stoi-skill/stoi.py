@@ -551,6 +551,144 @@ class STOIAnalyzer:
         ]
         return "\n".join(lines)
 
+def _print_feedback_summary(summary: Dict, title: str):
+    if RICH_AVAILABLE:
+        table = Table(title=title, box=box.ROUNDED, border_style="cyan")
+        table.add_column("指标", style="cyan")
+        table.add_column("数值", justify="right", style="bright_white")
+        rows = [
+            ("总 Prompt 数", str(summary["total_prompt_count"])),
+            ("有效 Prompt 数", str(summary["valid_prompt_count"])),
+            ("无效 Prompt 数", str(summary["invalid_prompt_count"])),
+            ("总 Input Tokens", str(summary["total_input_tokens"])),
+            ("有效 Input Tokens", str(summary["valid_input_tokens"])),
+            ("无效 Input Tokens", str(summary["invalid_input_tokens"])),
+            ("总 Output Tokens", str(summary["total_output_tokens"])),
+            ("有效 Output Tokens", str(summary["valid_output_tokens"])),
+            ("无效 Output Tokens", str(summary["invalid_output_tokens"])),
+            ("总 Tokens", str(summary["total_tokens"])),
+            ("有效 Tokens", str(summary["valid_tokens"])),
+            ("无效 Tokens", str(summary["invalid_tokens"])),
+            ("有效占比", f"{summary['valid_token_ratio'] * 100:.2f}%"),
+            ("无效占比", f"{summary['invalid_token_ratio'] * 100:.2f}%"),
+        ]
+        for label, value in rows:
+            table.add_row(label, value)
+        Console().print(table)
+        return
+
+    print(f"\n{title}")
+    print("=" * len(title))
+    for label, key in [
+        ("总 Prompt 数", "total_prompt_count"),
+        ("有效 Prompt 数", "valid_prompt_count"),
+        ("无效 Prompt 数", "invalid_prompt_count"),
+        ("总 Input Tokens", "total_input_tokens"),
+        ("有效 Input Tokens", "valid_input_tokens"),
+        ("无效 Input Tokens", "invalid_input_tokens"),
+        ("总 Output Tokens", "total_output_tokens"),
+        ("有效 Output Tokens", "valid_output_tokens"),
+        ("无效 Output Tokens", "invalid_output_tokens"),
+        ("总 Tokens", "total_tokens"),
+        ("有效 Tokens", "valid_tokens"),
+        ("无效 Tokens", "invalid_tokens"),
+    ]:
+        print(f"{label}: {summary[key]}")
+    print(f"有效占比: {summary['valid_token_ratio'] * 100:.2f}%")
+    print(f"无效占比: {summary['invalid_token_ratio'] * 100:.2f}%")
+
+
+def _print_feedback_session_summaries(summaries: List[Dict], limit: Optional[int] = None):
+    if limit is not None:
+        summaries = summaries[:limit]
+
+    if RICH_AVAILABLE:
+        table = Table(title="Session 维度有效性汇总", box=box.ROUNDED, border_style="green")
+        table.add_column("Session", style="cyan")
+        table.add_column("项目", style="dim")
+        table.add_column("Prompt", justify="right")
+        table.add_column("有效 Tokens", justify="right")
+        table.add_column("无效 Tokens", justify="right")
+        table.add_column("有效占比", justify="right")
+        for item in summaries:
+            table.add_row(
+                item["session_id"][:8] + "...",
+                Path(item["project_path"]).name if item["project_path"] else "",
+                str(item["total_prompt_count"]),
+                str(item["valid_tokens"]),
+                str(item["invalid_tokens"]),
+                f"{item['valid_token_ratio'] * 100:.1f}%",
+            )
+        Console().print(table)
+        return
+
+    print("\nSession 维度有效性汇总")
+    print("=" * 60)
+    for item in summaries:
+        project_name = Path(item["project_path"]).name if item["project_path"] else ""
+        print(
+            f"{item['session_id'][:8]}... | {project_name:<20} | "
+            f"有效 {item['valid_tokens']:<8} | 无效 {item['invalid_tokens']:<8} | "
+            f"占比 {item['valid_token_ratio'] * 100:.1f}%"
+        )
+
+
+def _print_feedback_rows(rows: List[Dict]):
+    if RICH_AVAILABLE:
+        table = Table(title="Prompt 维度明细", box=box.ROUNDED, border_style="yellow")
+        table.add_column("Idx", justify="right", width=4)
+        table.add_column("Prompt", style="bright_white")
+        table.add_column("Input", justify="right", width=8)
+        table.add_column("Output", justify="right", width=8)
+        table.add_column("判定", justify="center", width=8)
+        table.add_column("反馈", style="dim")
+        for row in rows:
+            preview = (row["prompt_text"] or "").replace("\n", " ")
+            if len(preview) > 40:
+                preview = preview[:37] + "..."
+            feedback = (row["feedback_text"] or "").replace("\n", " ")
+            if len(feedback) > 28:
+                feedback = feedback[:25] + "..."
+            table.add_row(
+                str(row["prompt_index"]),
+                preview,
+                str(row["input_tokens"]),
+                str(row["output_tokens"]),
+                "无效" if row["token_effectiveness"] == "invalid" else "有效",
+                feedback,
+            )
+        Console().print(table)
+        return
+
+    print("\nPrompt 维度明细")
+    print("=" * 80)
+    for row in rows:
+        preview = (row["prompt_text"] or "").replace("\n", " ")
+        if len(preview) > 40:
+            preview = preview[:37] + "..."
+        feedback = (row["feedback_text"] or "").replace("\n", " ")
+        if len(feedback) > 28:
+            feedback = feedback[:25] + "..."
+        print(
+            f"{row['prompt_index']:>3} | {preview:<40} | "
+            f"in {row['input_tokens']:<6} | out {row['output_tokens']:<6} | "
+            f"{'无效' if row['token_effectiveness'] == 'invalid' else '有效':<4} | {feedback}"
+        )
+
+
+def _load_feedback_token_validity_service():
+    module_dir = Path(__file__).resolve().parent.parent / "STOI-Demo-cola"
+    module_path = module_dir / "claude_feedback_token_validity.py"
+    if not module_path.exists():
+        raise ImportError(f"未找到模块文件: {module_path}")
+
+    module_dir_str = str(module_dir)
+    if module_dir_str not in sys.path:
+        sys.path.insert(0, module_dir_str)
+
+    from claude_feedback_token_validity import ClaudeFeedbackTokenValidityService
+    return ClaudeFeedbackTokenValidityService
+
 
 def main():
     """主函数"""
@@ -754,7 +892,47 @@ print(list(fib(10)))
             else:
                 print("\n❌ Claude Code 数据不可用")
                 print(f"检查文件: {importer.data_path}")
+    elif args.command == "backfill-feedback-validity":
+        ClaudeFeedbackTokenValidityService = _load_feedback_token_validity_service()
+        service = ClaudeFeedbackTokenValidityService(db_path=str(db.db_path))
+        result = service.backfill(session_id=args.session or args.session_id)
+        if args.format == "json":
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        else:
+            print(f"✅ 已回填 {result['session_count']} 个 session, {result['prompt_count']} 条 prompt")
 
+    elif args.command == "feedback-validity":
+        ClaudeFeedbackTokenValidityService = _load_feedback_token_validity_service()
+        service = ClaudeFeedbackTokenValidityService(db_path=str(db.db_path))
+        session_id = args.session or args.session_id
+        rows = service.get_rows(
+            session_id=session_id,
+            project_path=args.project,
+            limit=args.limit if session_id else None,
+            only=args.only,
+        )
+
+        if session_id:
+            summary = service.summarize_rows(rows)
+            if args.format == "json":
+                print(json.dumps({
+                    "summary": summary,
+                    "rows": rows,
+                }, ensure_ascii=False, indent=2))
+            else:
+                _print_feedback_summary(summary, f"Session {session_id} Token 有效性")
+                _print_feedback_rows(rows)
+        else:
+            summary = service.summarize_rows(rows)
+            session_summaries = service.summarize_by_session(rows)
+            if args.format == "json":
+                print(json.dumps({
+                    "summary": summary,
+                    "session_summaries": session_summaries,
+                }, ensure_ascii=False, indent=2))
+            else:
+                _print_feedback_summary(summary, "全局 Token 有效性")
+                _print_feedback_session_summaries(session_summaries, limit=args.limit)
 
 if __name__ == "__main__":
     main()

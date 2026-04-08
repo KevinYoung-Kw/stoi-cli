@@ -10,8 +10,11 @@ Shit Token On Investment
   python3 stoi.py analyze    # 离线分析 Claude Code 会话
   python3 stoi.py tui        # 启动 TUI 仪表盘
   python3 stoi.py trend      # ASCII 趋势图
+  python3 stoi.py backfill-feedback-validity  # 回填反馈型 token 有效性
+  python3 stoi.py feedback-validity           # 查看反馈型 token 有效性
 """
 
+import argparse
 import json
 import os
 import subprocess
@@ -46,6 +49,8 @@ COMMANDS = {
     "analyze": "离线分析 ~/.claude/projects/ 会话文件",
     "tui":     "启动实时 TUI 仪表盘",
     "trend":   "打印多轮含屎量趋势 ASCII 图",
+    "backfill-feedback-validity": "回填 Claude Code 反馈型 token 有效性",
+    "feedback-validity": "查看 Claude Code 反馈型 token 有效性",
 }
 
 
@@ -85,6 +90,80 @@ def load_log() -> list[dict]:
         return records
     except Exception:
         return []
+
+
+def _print_feedback_summary(summary: dict, title: str):
+    table = Table(title=title, box=box.ROUNDED, border_style="cyan")
+    table.add_column("指标", style="cyan")
+    table.add_column("数值", justify="right", style="bright_white")
+    rows = [
+        ("总 Prompt 数", str(summary["total_prompt_count"])),
+        ("有效 Prompt 数", str(summary["valid_prompt_count"])),
+        ("无效 Prompt 数", str(summary["invalid_prompt_count"])),
+        ("总 Input Tokens", str(summary["total_input_tokens"])),
+        ("有效 Input Tokens", str(summary["valid_input_tokens"])),
+        ("无效 Input Tokens", str(summary["invalid_input_tokens"])),
+        ("总 Output Tokens", str(summary["total_output_tokens"])),
+        ("有效 Output Tokens", str(summary["valid_output_tokens"])),
+        ("无效 Output Tokens", str(summary["invalid_output_tokens"])),
+        ("总 Tokens", str(summary["total_tokens"])),
+        ("有效 Tokens", str(summary["valid_tokens"])),
+        ("无效 Tokens", str(summary["invalid_tokens"])),
+        ("有效占比", f"{summary['valid_token_ratio'] * 100:.2f}%"),
+        ("无效占比", f"{summary['invalid_token_ratio'] * 100:.2f}%"),
+    ]
+    for label, value in rows:
+        table.add_row(label, value)
+    console.print(table)
+
+
+def _print_feedback_session_summaries(summaries: list[dict], limit: int | None = None):
+    if limit is not None:
+        summaries = summaries[:limit]
+
+    table = Table(title="Session 维度有效性汇总", box=box.ROUNDED, border_style="green")
+    table.add_column("Session", style="cyan")
+    table.add_column("项目", style="dim")
+    table.add_column("Prompt", justify="right")
+    table.add_column("有效 Tokens", justify="right")
+    table.add_column("无效 Tokens", justify="right")
+    table.add_column("有效占比", justify="right")
+    for item in summaries:
+        table.add_row(
+            item["session_id"][:8] + "...",
+            Path(item["project_path"]).name if item["project_path"] else "",
+            str(item["total_prompt_count"]),
+            str(item["valid_tokens"]),
+            str(item["invalid_tokens"]),
+            f"{item['valid_token_ratio'] * 100:.1f}%",
+        )
+    console.print(table)
+
+
+def _print_feedback_rows(rows: list[dict]):
+    table = Table(title="Prompt 维度明细", box=box.ROUNDED, border_style="yellow")
+    table.add_column("Idx", justify="right", width=4)
+    table.add_column("Prompt", style="bright_white")
+    table.add_column("Input", justify="right", width=8)
+    table.add_column("Output", justify="right", width=8)
+    table.add_column("判定", justify="center", width=8)
+    table.add_column("反馈", style="dim")
+    for row in rows:
+        preview = (row["prompt_text"] or "").replace("\n", " ")
+        if len(preview) > 40:
+            preview = preview[:37] + "..."
+        feedback = (row["feedback_text"] or "").replace("\n", " ")
+        if len(feedback) > 28:
+            feedback = feedback[:25] + "..."
+        table.add_row(
+            str(row["prompt_index"]),
+            preview,
+            str(row["input_tokens"]),
+            str(row["output_tokens"]),
+            "无效" if row["token_effectiveness"] == "invalid" else "有效",
+            feedback,
+        )
+    console.print(table)
 
 
 # ── start ────────────────────────────────────────────────────────────────────
@@ -321,6 +400,61 @@ def cmd_trend():
         console.print(f"  最低: [green]{min(scores)}%[/green]")
 
 
+def cmd_backfill_feedback_validity(args: list[str]):
+    from claude_feedback_token_validity import ClaudeFeedbackTokenValidityService
+
+    parser = argparse.ArgumentParser(prog="stoi backfill-feedback-validity", add_help=True)
+    parser.add_argument("--session", "-s", help="会话ID")
+    parser.add_argument("--format", choices=["table", "json"], default="table")
+    parsed = parser.parse_args(args)
+
+    service = ClaudeFeedbackTokenValidityService()
+    result = service.backfill(session_id=parsed.session)
+    if parsed.format == "json":
+        console.print_json(json.dumps(result, ensure_ascii=False))
+    else:
+        console.print(f"[green]✓ 已回填 {result['session_count']} 个 session, {result['prompt_count']} 条 prompt[/green]")
+
+
+def cmd_feedback_validity(args: list[str]):
+    from claude_feedback_token_validity import ClaudeFeedbackTokenValidityService
+
+    parser = argparse.ArgumentParser(prog="stoi feedback-validity", add_help=True)
+    parser.add_argument("--session", "-s", help="会话ID")
+    parser.add_argument("--format", choices=["table", "json"], default="table")
+    parser.add_argument("--limit", type=int, help="结果数量限制")
+    parser.add_argument("--project", help="按项目路径过滤")
+    parser.add_argument("--only", choices=["all", "valid", "invalid"], default="all")
+    parsed = parser.parse_args(args)
+
+    service = ClaudeFeedbackTokenValidityService()
+    rows = service.get_rows(
+        session_id=parsed.session,
+        project_path=parsed.project,
+        limit=parsed.limit if parsed.session else None,
+        only=parsed.only,
+    )
+
+    if parsed.session:
+        summary = service.summarize_rows(rows)
+        if parsed.format == "json":
+            console.print_json(json.dumps({"summary": summary, "rows": rows}, ensure_ascii=False))
+        else:
+            _print_feedback_summary(summary, f"Session {parsed.session} Token 有效性")
+            _print_feedback_rows(rows)
+    else:
+        summary = service.summarize_rows(rows)
+        session_summaries = service.summarize_by_session(rows)
+        if parsed.format == "json":
+            console.print_json(json.dumps({
+                "summary": summary,
+                "session_summaries": session_summaries,
+            }, ensure_ascii=False))
+        else:
+            _print_feedback_summary(summary, "全局 Token 有效性")
+            _print_feedback_session_summaries(session_summaries, limit=parsed.limit)
+
+
 # ── help ─────────────────────────────────────────────────────────────────────
 def cmd_help():
     print_logo()
@@ -354,6 +488,8 @@ def main():
         "blame":   cmd_blame,
         "tui":     cmd_tui,
         "trend":   cmd_trend,
+        "backfill-feedback-validity": lambda: cmd_backfill_feedback_validity(rest),
+        "feedback-validity": lambda: cmd_feedback_validity(rest),
         "help":    cmd_help,
         "--help":  cmd_help,
         "-h":      cmd_help,
