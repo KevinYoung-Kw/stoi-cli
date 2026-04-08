@@ -14,6 +14,7 @@ Shit Token On Investment
   python3 stoi.py feedback-validity           # 查看反馈型 token 有效性
 """
 
+import argparse
 import json
 import os
 import subprocess
