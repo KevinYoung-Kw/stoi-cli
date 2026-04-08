@@ -696,7 +696,7 @@ class ClaudeFeedbackTokenValidityService:
         try:
             with open(meta_file, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return {"input_tokens": 0, "output_tokens": 0}
         return {
             "input_tokens": int(data.get("input_tokens") or 0),

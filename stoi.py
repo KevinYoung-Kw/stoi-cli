@@ -328,7 +328,7 @@ def cmd_trend():
 
 # ── feedback validity helpers ────────────────────────────────────────────────
 def _print_feedback_summary(summary: dict, title: str):
-    table = Table(title=title, box=box.ROUNDED, border_style="cyan")
+    table = Table(title=title, box=box.ROUNDED, border_style="#FFB800")
     table.add_column("指标", style="cyan")
     table.add_column("数值", justify="right", style="bright_white")
     rows = [
@@ -356,7 +356,7 @@ def _print_feedback_session_summaries(summaries: list, limit: int = None):
     if limit is not None:
         summaries = summaries[:limit]
 
-    table = Table(title="Session 维度有效性汇总", box=box.ROUNDED, border_style="green")
+    table = Table(title="Session 维度有效性汇总", box=box.ROUNDED, border_style="#FFB800")
     table.add_column("Session", style="cyan")
     table.add_column("项目", style="dim")
     table.add_column("Prompt", justify="right")
@@ -376,7 +376,7 @@ def _print_feedback_session_summaries(summaries: list, limit: int = None):
 
 
 def _print_feedback_rows(rows: list):
-    table = Table(title="Prompt 维度明细", box=box.ROUNDED, border_style="yellow")
+    table = Table(title="Prompt 维度明细", box=box.ROUNDED, border_style="#FFB800")
     table.add_column("Idx", justify="right", width=4)
     table.add_column("Prompt", style="bright_white")
     table.add_column("Input", justify="right", width=8)
