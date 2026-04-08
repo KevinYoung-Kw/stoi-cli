@@ -181,7 +181,7 @@ def _llm_evaluate_batch(pairs: list[dict]) -> list[dict]:
     if not pairs:
         return []
     try:
-        from stoi_config import load_config, get_api_key
+        from .stoi_config import load_config, get_api_key
         cfg = load_config()
         llm = cfg.get("llm", {})
         provider = llm.get("provider", "")
@@ -701,7 +701,7 @@ def analyze(
 
     # 7. LLM 深度建议（可选）
     if llm_enabled:
-        from stoi_advisor import get_suggestions
+        from .stoi_advisor import get_suggestions
         report.llm_suggestions = get_suggestions(report)
 
     return report
@@ -754,7 +754,7 @@ INSIGHTS_KNOWLEDGE = """你是 STOI（Shit Token On Investment）的 AI 分析�
 
 def _get_llm_suggestions(report: STOIReport) -> list[str]:
     try:
-        from stoi_config import load_config, get_api_key
+        from .stoi_config import load_config, get_api_key
         cfg = load_config()
         llm = cfg.get("llm", {})
         provider = llm.get("provider", "")

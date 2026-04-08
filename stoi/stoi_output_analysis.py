@@ -40,15 +40,119 @@ YAPPING_PATTERNS = [
 ]
 
 
-def detect_yapping(text: str) -> dict:
-    """检测输出中的 Yapping 废话（对应 Thinking 的无差别反思）"""
+# ── Yapping 废话参考库（embedding 相似度匹配用）─────────────────────────────
+YAPPING_TEMPLATES = [
+    "好的，让我来帮您解决这个问题。",
+    "当然，我很乐意为您提供帮助。",
+    "希望以上内容对您有所帮助！",
+    "如果您还有任何问题，请随时告诉我。",
+    "以上是本次操作的完整总结。",
+    "综上所述，所有改动均已完成并验证。",
+    "主要改动如上所列，如需进一步调整请告知。",
+    "操作成功完成，请查看上述详细说明。",
+]
+
+_yapping_embeddings = None
+_embed_cache: dict = {}
+
+
+def _get_api_config() -> tuple[str, str, str]:
+    """从 stoi config 获取 API 配置"""
+    try:
+        cfg = json.loads(Path("~/.stoi/config.json").expanduser().read_text())
+        llm = cfg.get("llm", {})
+        return (
+            llm.get("api_key", ""),
+            llm.get("base_url", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            llm.get("model", "qwen-turbo"),
+        )
+    except Exception:
+        return "", "", "qwen-turbo"
+
+
+def _get_embedding(text: str):
+    """调用 embedding API（dashscope text-embedding-v3）"""
+    key = text[:100]
+    if key in _embed_cache:
+        return _embed_cache[key]
+    try:
+        api_key, base_url, _ = _get_api_config()
+        if not api_key:
+            return None
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        resp = client.embeddings.create(model="text-embedding-v3", input=text[:512])
+        vec = resp.data[0].embedding
+        _embed_cache[key] = vec
+        return vec
+    except Exception:
+        return None
+
+
+def _cosine_sim(a: list[float], b: list[float]) -> float:
+    import math
+    dot = sum(x * y for x, y in zip(a, b))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(x * x for x in b))
+    return dot / (na * nb) if na * nb > 0 else 0.0
+
+
+def _get_yapping_embeddings():
+    """懒加载废话模板的 embedding，只计算一次"""
+    global _yapping_embeddings
+    if _yapping_embeddings is not None:
+        return _yapping_embeddings
+    vecs = [v for v in (_get_embedding(t) for t in YAPPING_TEMPLATES) if v]
+    _yapping_embeddings = vecs
+    return vecs
+
+
+def _llm_judge_yapping(text: str) -> dict:
+    """用 qwen-turbo 精确判断 Yapping（仅在 embedding 疑似时调用）"""
+    try:
+        api_key, base_url, model = _get_api_config()
+        if not api_key:
+            return {"score": 0.0, "reason": ""}
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key, base_url=base_url)
+        prompt = f"""判断这段 AI 输出中有多少是废话（对完成任务没有实质贡献）。
+
+废话包括：开头客套、结尾问询、不必要的总结列表、执行完成后的重复确认。
+
+输出（前300字）：
+{text[:300]}
+
+只输出 JSON：{{"yapping_score": 0.0-1.0, "reason": "一句话", "sample": "最典型废话片段（20字内）"}}"""
+        resp = client.chat.completions.create(
+            model="qwen-turbo",  # 强制用最轻量模型
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=120,
+        )
+        result = json.loads(resp.choices[0].message.content)
+        return {
+            "score":  float(result.get("yapping_score", 0)),
+            "reason": result.get("reason", ""),
+            "sample": result.get("sample", ""),
+        }
+    except Exception:
+        return {"score": 0.0, "reason": ""}
+
+
+def detect_yapping(text: str, use_llm: bool = False) -> dict:
+    """
+    三层 Yapping 检测：
+    1. 正则（0成本，快）
+    2. embedding 相似度（极低成本，语义）
+    3. qwen-turbo judge（低成本，精确，仅在前两层疑似时触发）
+    """
     if not text:
-        return {"yapping_rate": 0.0, "patterns": []}
+        return {"yapping_rate": 0.0, "patterns": [], "method": "none"}
 
     total_chars = len(text)
     found = []
     yapping_chars = 0
 
+    # 第一层：正则
     for pattern, label in YAPPING_PATTERNS:
         matches = re.findall(pattern, text, re.MULTILINE | re.DOTALL)
         if matches:
@@ -57,9 +161,40 @@ def detect_yapping(text: str) -> dict:
                 yapping_chars += chars
                 found.append({"pattern": label, "sample": str(m)[:50]})
 
+    regex_rate = round(min(yapping_chars / total_chars, 1.0), 3) if total_chars > 0 else 0.0
+
+    # 第二层：embedding 相似度
+    text_vec = _get_embedding(text[:300])
+    yapping_vecs = _get_yapping_embeddings() if text_vec else []
+
+    embed_max_sim = 0.0
+    if text_vec and yapping_vecs:
+        embed_max_sim = max(_cosine_sim(text_vec, yv) for yv in yapping_vecs)
+
+    # 相似度 > 0.7 认为疑似废话
+    embed_rate = round(max(embed_max_sim - 0.5, 0) * 2, 3)
+
+    # 第三层：LLM judge（疑似且启用时才调用）
+    if use_llm and (regex_rate > 0.05 or embed_rate > 0.4):
+        llm_result = _llm_judge_yapping(text)
+        final_rate = max(regex_rate, embed_rate * 0.6, llm_result["score"] * 0.8)
+        return {
+            "yapping_rate": round(final_rate, 3),
+            "patterns":     found + ([{"pattern": "llm", "sample": llm_result["sample"]}]
+                                      if llm_result["sample"] else []),
+            "method":       "regex+embedding+llm",
+            "embed_sim":    round(embed_max_sim, 3),
+            "llm_score":    llm_result["score"],
+            "llm_reason":   llm_result["reason"],
+        }
+
+    final_rate = max(regex_rate, embed_rate * 0.7)
+    method = "regex+embedding" if embed_max_sim > 0 else "regex"
     return {
-        "yapping_rate": round(min(yapping_chars / total_chars, 1.0), 3) if total_chars > 0 else 0.0,
+        "yapping_rate": round(final_rate, 3),
         "patterns": found[:5],
+        "method":   method,
+        "embed_sim": round(embed_max_sim, 3) if embed_max_sim > 0 else None,
     }
 
 

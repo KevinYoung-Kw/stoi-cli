@@ -27,7 +27,7 @@ from rich import box
 from rich.text import Text
 from rich.rule import Rule
 
-from stoi_core import STOIReport, TurnRecord, _get_level
+from .stoi_core import STOIReport, TurnRecord, _get_level
 
 # ─── Colour palette ───────────────────────────────────────────────────────────
 AMBER  = "#FFB800"
@@ -651,7 +651,7 @@ def render_report(
 
 # ─── CLI smoke test ───────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    from stoi_core import analyze, find_claude_sessions
+    from .stoi_core import analyze, find_claude_sessions
 
     files = find_claude_sessions(1)
     if files:

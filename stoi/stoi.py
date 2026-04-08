@@ -43,8 +43,8 @@ def print_logo():
 
 # ── stoi report ───────────────────────────────────────────────────────────────
 def cmd_report(args: list[str]) -> None:
-    from stoi_core import analyze, find_claude_sessions, find_opencode_sessions
-    from stoi_report import render_cli, render_html, render_report
+    from .stoi_core import analyze, find_claude_sessions, find_opencode_sessions
+    from .stoi_report import render_cli, render_html, render_report
 
     html_mode = "--html" in args
     llm_mode  = "--llm" in args
@@ -98,8 +98,8 @@ def cmd_report(args: list[str]) -> None:
 
 def _report_all(html_mode: bool, llm_mode: bool) -> None:
     """分析所有历史 session，输出汇总"""
-    from stoi_core import analyze, find_claude_sessions, STOIReport
-    from stoi_report import render_html
+    from .stoi_core import analyze, find_claude_sessions, STOIReport
+    from .stoi_report import render_html
 
     files = find_claude_sessions(10)
     if not files:
@@ -172,7 +172,7 @@ def cmd_start() -> None:
 # ── stoi config ───────────────────────────────────────────────────────────────
 def cmd_config(args: list[str]) -> None:
     print_logo()
-    from stoi_config import run_onboard, show_config
+    from .stoi_config import run_onboard, show_config
     if "--show" in args:
         show_config()
     else:
@@ -182,7 +182,7 @@ def cmd_config(args: list[str]) -> None:
 # ── stoi compare ──────────────────────────────────────────────────────────────
 def cmd_compare(args: list[str]) -> None:
     """before/after 对比：选两个 session，展示含屎量变化"""
-    from stoi_core import analyze, find_claude_sessions
+    from .stoi_core import analyze, find_claude_sessions
     
 
     print_logo()
@@ -285,7 +285,7 @@ def main():
 
     # 无参数 → 进入 REPL 交互模式
     if not args:
-        from stoi_repl import run
+        from .stoi_repl import run
         run()
         return
 

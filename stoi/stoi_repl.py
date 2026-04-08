@@ -79,7 +79,7 @@ class REPLState:
 
     def _detect_sessions(self):
         """启动时自动检测可用的 session"""
-        from stoi_core import find_claude_sessions
+        from .stoi_core import find_claude_sessions
         files = find_claude_sessions(1)
         if files:
             self.current_session = files[0]
@@ -231,7 +231,7 @@ def handle_command(cmd: str) -> bool:
         _run_compare()
 
     elif cmd == "/settings":
-        from stoi_config import run_onboard
+        from .stoi_config import run_onboard
         run_onboard()
 
     elif cmd == "/status":
@@ -258,9 +258,15 @@ def handle_command(cmd: str) -> bool:
     return True
 
 
+<<<<<<< HEAD:STOI-Demo-cola/stoi_repl.py
 def _run_report(llm: bool = False, speak_summary: bool = False):
     from stoi_core import analyze
     from stoi_report import render_cli
+=======
+def _run_report(llm: bool = False):
+    from .stoi_core import analyze
+    from .stoi_report import render_cli
+>>>>>>> c191a3f (feat: 3-layer Yapping detection (regex + embedding + qwen-turbo LLM judge)):STOI-Demo-cola/stoi/stoi_repl.py
 
     console.print()
     with console.status("[dim]分析中...[/dim]", spinner="dots"):
@@ -289,7 +295,7 @@ def _run_report(llm: bool = False, speak_summary: bool = False):
 
 def _run_sessions(filter_agent: Optional[str] = None):
     """列出 session，让用户选择"""
-    from stoi_core import find_claude_sessions, find_opencode_sessions
+    from .stoi_core import find_claude_sessions, find_opencode_sessions
 
     console.print()
 
@@ -440,7 +446,7 @@ def _run_compare():
     console.print("  [bold #FFB800]Compare[/bold #FFB800]  [dim]选择 Before / After session[/dim]")
     console.print()
 
-    from stoi_core import find_claude_sessions, analyze
+    from .stoi_core import find_claude_sessions, analyze
     files = find_claude_sessions(10)
     if len(files) < 2:
         console.print("  [yellow]至少需要 2 个 session 才能对比[/yellow]")
@@ -467,7 +473,7 @@ def _run_compare():
         r_before = analyze(b_path)
         r_after  = analyze(a_path)
 
-    from stoi_report import render_compare
+    from .stoi_report import render_compare
     render_compare(r_before, r_after)
 
 
@@ -482,8 +488,8 @@ def _show_session_mini_list(files):
 
 def _run_output_analysis():
     """基于 session 文件直接分析输出质量（不需要代理模式）"""
-    from stoi_output_analysis import load_session_conversation, analyze_output_quality
-    from stoi_core import find_claude_sessions
+    from .stoi_output_analysis import load_session_conversation, analyze_output_quality
+    from .stoi_core import find_claude_sessions
 
     console.print()
 
@@ -538,7 +544,7 @@ def _run_output_analysis():
 
 def _run_overview():
     """全局 Token 效率报告——基于 stats-cache.json，覆盖所有历史 session"""
-    from stoi_core import get_global_efficiency_report
+    from .stoi_core import get_global_efficiency_report
     from datetime import datetime
 
     console.print()
@@ -732,7 +738,7 @@ def _run_status():
 
     recent = stats.get("recent", [])
     if recent:
-        from stoi_repl import make_sparkline  # self-import won't work, inline it
+        from .stoi_repl import make_sparkline  # self-import won't work, inline it
         chars = " ▁▂▃▄▅▆▇█"
         mn, mx = 0.0, 100.0
         spark = ""

@@ -172,7 +172,7 @@ def get_suggestions(report, verbose: bool = False) -> list[str]:
     支持 qwen / anthropic / openai
     """
     try:
-        from stoi_config import load_config, get_api_key
+        from .stoi_config import load_config, get_api_key
         cfg = load_config()
         llm = cfg.get("llm", {})
         provider = llm.get("provider", "")
