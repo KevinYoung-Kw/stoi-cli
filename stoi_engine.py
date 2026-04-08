@@ -362,3 +362,89 @@ def get_level_display(level: str) -> str:
     """返回带 emoji 的等级显示"""
     emoji = SHIT_EMOJI.get(level, "❓")
     return f"{emoji} {level}"
+
+
+# ── L4：用户反馈信号法则（艺术法则）────────────────────────────────────────────
+# 核心洞察：用户的下一条消息是对 AI 输出价值的最直接判断
+# 不需要 LLM，不需要 embedding，用对话本身作为 ground truth
+
+NEGATIVE_SIGNALS = [
+    "没看到", "不对", "还是不行", "没改", "没有生成", "没有输出",
+    "不符合", "理解错了", "为什么没有", "怎么没", "跑不起来",
+    "没生效", "找不到", "没找到", "没有这个", "没变化", "还是一样",
+    "没用", "不管用", "无效", "没有效果", "又报错", "还是报错",
+]
+POSITIVE_SIGNALS = [
+    "好了", "可以了", "对了", "没问题", "谢谢", "收到", "完美",
+    "很好", "不错", "可以", "好的", "ok", "成功", "搞定", "太棒了",
+]
+FIXUP_SIGNALS = [  # 追加修改 → 上一轮部分有效但不完整
+    "再", "还要", "另外", "补上", "补一下", "修改", "改一下",
+    "调整", "优化", "完善", "继续", "下一步",
+]
+
+def l4_feedback_validity(next_user_msg: str) -> dict:
+    """
+    L4 层：用用户下一条消息判断上一轮 AI 输出的价值
+
+    返回：
+      validity: "valid" | "invalid" | "partial" | "unknown"
+      signal:   触发的关键词
+      penalty:  含屎量惩罚分（0-30）
+    """
+    if not next_user_msg:
+        return {"validity": "unknown", "signal": "", "penalty": 0}
+
+    text = next_user_msg.strip().casefold()
+
+    # 负面信号：上一轮无效
+    for sig in NEGATIVE_SIGNALS:
+        if text.startswith(sig.casefold()) or sig.casefold() in text[:20]:
+            return {"validity": "invalid", "signal": sig, "penalty": 30}
+
+    # 正面信号：上一轮有效
+    for sig in POSITIVE_SIGNALS:
+        if text.startswith(sig.casefold()):
+            return {"validity": "valid", "signal": sig, "penalty": 0}
+
+    # 追加修改信号：部分有效
+    for sig in FIXUP_SIGNALS:
+        if text.startswith(sig.casefold()):
+            return {"validity": "partial", "signal": sig, "penalty": 10}
+
+    return {"validity": "unknown", "signal": "", "penalty": 5}
+
+
+def analyze_session_validity(records: list[dict]) -> list[dict]:
+    """
+    对整个 session 做 L4 有效性标注。
+    records 需要包含 role 和 content 字段（来自原始 session 文件）。
+
+    逻辑：
+      - 找每个 assistant 轮次后的第一条 user 消息
+      - 用 l4_feedback_validity 判断有效性
+      - 把结果注入到对应的 stoi 记录里
+    """
+    annotated = []
+    for i, rec in enumerate(records):
+        r = dict(rec)
+        # 找下一条 user 消息
+        next_user = ""
+        for j in range(i + 1, min(i + 3, len(records))):
+            if records[j].get("role") == "user":
+                next_user = records[j].get("content", "")[:100]
+                break
+        l4 = l4_feedback_validity(next_user)
+        r["l4"] = l4
+        # 把 L4 惩罚加到 stoi_score（如果是真实输出轮）
+        if not r.get("stoi", {}).get("is_baseline") and l4["validity"] == "invalid":
+            old = r["stoi"]["stoi_score"]
+            r["stoi"]["stoi_score"] = min(100.0, old + l4["penalty"])
+            r["stoi"]["l4_penalty"] = l4["penalty"]
+            # 重新计算等级
+            for lvl, (lo, hi) in SHIT_THRESHOLDS.items():
+                if lo <= r["stoi"]["stoi_score"] < hi:
+                    r["stoi"]["level"] = lvl
+                    break
+        annotated.append(r)
+    return annotated

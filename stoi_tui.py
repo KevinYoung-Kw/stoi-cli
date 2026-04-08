@@ -25,7 +25,7 @@ from rich.text import Text
 
 from stoi_engine import (
     calc_stoi, SHIT_EMOJI, SHIT_THRESHOLDS,
-    get_score_color, TTS_MESSAGES,
+    get_score_color, TTS_MESSAGES, analyze_session_validity,
 )
 
 # ── 路径配置 ──────────────────────────────────────────────────────────────────
@@ -653,7 +653,7 @@ class DashboardScreen(Screen):
     def on_mount(self) -> None:
         # 初始化表格
         table = self.query_one("#turns-table", DataTable)
-        table.add_columns("轮次", "时间", "含屎量", "缓存命中", "输入", "输出", "状态")
+        table.add_columns("轮次", "时间", "含屎量", "缓存命中", "输入", "输出", "状态", "用户反馈")
         self._load_data()
 
     def _load_data(self) -> None:
@@ -665,13 +665,14 @@ class DashboardScreen(Screen):
         path  = session.get("path")
 
         if agent == "opencode":
-            # OpenCode: parse from SQLite by session ID
             self.records = parse_opencode_session(session.get("id", ""))
         elif agent == "gemini":
             self.records = parse_gemini_session(Path(path))
         else:
             self.records = parse_session_file(Path(path), agent)
 
+        # L4: 用户反馈有效性标注
+        self.records = analyze_session_validity(self.records)
         self._update_display()
 
     def _update_display(self) -> None:
@@ -758,7 +759,10 @@ class DashboardScreen(Screen):
             note      = s.get("note", "") or {"CLEAN": "✅", "MILD_SHIT": "🟡", "SHIT_OVERFLOW": "🟠", "DEEP_SHIT": "💩"}.get(s["level"], "")
             if s.get("is_baseline"):
                 note = "[dim]基准[/dim]"
-            table.add_row(str(r["turn"]+1), ts, score_str, hit_str, inp_str, out_str, note)
+            l4 = r.get("l4", {})
+            validity = l4.get("validity", "")
+            feedback_display = {"valid": "✅ 有效", "invalid": "❌ 无效", "partial": "🟡 部分", "unknown": ""}.get(validity, "")
+            table.add_row(str(r["turn"]+1), ts, score_str, hit_str, inp_str, out_str, note, feedback_display)
 
         # 底部状态栏
         self.query_one("#bottom-bar", Static).update(

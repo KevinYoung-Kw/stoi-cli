@@ -43,14 +43,14 @@ STOI_LOGO = r"""
 """
 
 COMMANDS = {
-    "start":   "启动 API 代理（拦截 Claude Code 请求）",
-    "stats":   "打印含屎量统计报告 + TTS 播报",
-    "blame":   "扫描 System Prompt，找 Cache Miss 元凶",
-    "analyze": "离线分析 ~/.claude/projects/ 会话文件",
-    "tui":     "启动实时 TUI 仪表盘",
-    "trend":   "打印多轮含屎量趋势 ASCII 图",
-    "backfill-feedback-validity": "回填 Claude Code 反馈型 token 有效性",
-    "feedback-validity": "查看 Claude Code 反馈型 token 有效性",
+    "start":    "启动 API 代理（拦截 Claude Code 请求）",
+    "stats":    "打印含屎量统计报告 + TTS 播报",
+    "blame":    "扫描 System Prompt，找 Cache Miss 元凶",
+    "analyze":  "离线分析 ~/.claude/projects/ 会话文件",
+    "insights": "🤖 AI 深度洞察：分析含屎量并给出改进建议",
+    "tui":      "启动实时 TUI 仪表盘",
+    "trend":    "打印多轮含屎量趋势 ASCII 图",
+    "config":   "配置 LLM Provider 和 API Key",
 }
 
 
@@ -270,6 +270,52 @@ def cmd_analyze(args: list[str]):
 def cmd_tui():
     from stoi_tui import run_tui as tui_main
     tui_main()
+
+
+# ── config ───────────────────────────────────────────────────────────────────
+def cmd_config():
+    print_logo()
+    from stoi_config import run_onboard, show_config
+    import sys
+    if "--show" in sys.argv:
+        show_config()
+    else:
+        run_onboard()
+
+
+# ── insights ─────────────────────────────────────────────────────────────────
+def cmd_insights(args: list = None):
+    print_logo()
+    from stoi_analyze import parse_claude_code_session, find_recent_sessions
+    from stoi_engine import analyze_session_validity
+    from stoi_insights import run_insights
+
+    args = args or []
+    target = args[0] if args else None
+
+    if target:
+        path = Path(target)
+        if not path.exists():
+            console.print(f"[red]文件不存在: {target}[/red]")
+            return
+        records = parse_claude_code_session(str(path))
+        session_name = path.stem
+    else:
+        # 用最新 session
+        files = find_recent_sessions(1)
+        if not files:
+            console.print("[yellow]未找到 Claude Code session，请指定文件路径[/yellow]")
+            console.print("用法: stoi insights [session文件路径]")
+            return
+        records = parse_claude_code_session(str(files[0]))
+        session_name = files[0].stem
+
+    if not records:
+        console.print("[yellow]session 文件为空或无法解析[/yellow]")
+        return
+
+    records = analyze_session_validity(records)
+    run_insights(records, session_name)
 
 
 # ── trend ────────────────────────────────────────────────────────────────────
@@ -501,10 +547,10 @@ def main():
 
     if cmd == "analyze":
         cmd_analyze(rest)
-    elif cmd == "backfill-feedback-validity":
-        cmd_backfill_feedback_validity(rest)
-    elif cmd == "feedback-validity":
-        cmd_feedback_validity(rest)
+    elif cmd == "insights":
+        cmd_insights(rest)
+    elif cmd == "config":
+        cmd_config()
     elif cmd in cmd_map:
         cmd_map[cmd]()
     else:

@@ -74,6 +74,20 @@ def parse_claude_code_session(path: str) -> list[dict]:
                 except json.JSONDecodeError:
                     continue
 
+                # 同时收集 user 消息用于 L4 有效性标注
+                if obj.get("type") == "human" or obj.get("message", {}).get("role") == "user":
+                    msg_content = ""
+                    content_raw = obj.get("message", {}).get("content", "")
+                    if isinstance(content_raw, str):
+                        msg_content = content_raw[:100]
+                    elif isinstance(content_raw, list):
+                        for c in content_raw:
+                            if isinstance(c, dict) and c.get("type") == "text":
+                                msg_content = c.get("text", "")[:100]
+                                break
+                    records.append({"role": "user", "content": msg_content, "stoi": {"is_baseline": True, "stoi_score": 0, "level": "CLEAN", "cache_hit_rate": 0, "input_tokens": 0, "output_tokens": 0, "wasted_tokens": 0, "new_tokens": 0, "cache_read": 0, "cache_creation": 0}, "ts": "", "model": "", "session": "", "usage": {}})
+                    continue
+
                 # 只处理 assistant 类型且有 usage 的条目
                 if obj.get("type") != "assistant":
                     continue
