@@ -676,11 +676,27 @@ def get_openai_client():
     manager = ConfigManager()
     provider = manager.get_active_provider()
 
-    if not provider or not provider.api_key:
+    if not provider:
+        # 没有激活的提供商
+        if manager.CONFIG_FILE.exists():
+            raise ValueError(
+                f"配置文件中没有可用的模型提供商\n"
+                f"配置文件位置: {manager.CONFIG_FILE}\n"
+                f"请运行 'stoi config' 添加提供商"
+            )
+        else:
+            raise ValueError(
+                "未配置模型提供商\n"
+                "请运行: stoi config\n"
+                "或设置环境变量: export DASHSCOPE_API_KEY=your_key"
+            )
+
+    if not provider.api_key:
+        # 提供商存在但没有 API key
         raise ValueError(
-            "未配置有效的模型提供商。\n"
-            "请运行: stoi config\n"
-            "或设置环境变量: export DASHSCOPE_API_KEY=your_key"
+            f"提供商 '{provider.name}' 没有配置 API Key\n"
+            f"请运行 'stoi config' 配置 API Key\n"
+            f"或使用 --provider 指定其他提供商"
         )
 
     try:

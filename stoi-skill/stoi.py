@@ -557,8 +557,9 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="💩 STOI - Shit Token On Investment")
-    parser.add_argument("command", choices=["analyze", "blame", "stats", "tts", "init", "demo", "config"])
-    parser.add_argument("--session", "-s", help="会话ID")
+    parser.add_argument("command", choices=["analyze", "blame", "stats", "tts", "init", "demo", "config", "sessions", "gui"])
+    parser.add_argument("session_id", nargs="?", help="会话ID (用于 analyze 命令)")
+    parser.add_argument("--session", "-s", help="会话ID (可选，也可直接传入)")
     parser.add_argument("--dramatic", "-d", action="store_true", help="戏剧化播报")
     parser.add_argument("--dashboard", action="store_true", help="仪表盘模式（需安装 rich）")
     parser.add_argument("--no-rich", action="store_true", help="禁用 Rich UI")
@@ -600,12 +601,25 @@ def main():
             model = args.model or default_model
 
         except ValueError as e:
-            print(f"错误: {e}")
-            print("\n可用的环境变量:")
-            for pid, env_vars in ConfigManager.ENV_MAPPINGS.items():
-                for var in env_vars:
-                    print(f"  export {var}=your_key_here  # {pid}")
-            print("\n或使用交互式配置: stoi config")
+            print(f"❌ 错误: {e}")
+
+            # 检查是否有配置文件
+            if config_manager.CONFIG_FILE.exists():
+                print(f"\n📄 检测到配置文件: {config_manager.CONFIG_FILE}")
+                print("已配置的提供商:")
+                for p in config_manager.list_providers():
+                    status = "✓" if p["has_key"] else "✗"
+                    default = " (默认)" if p["is_active"] else ""
+                    print(f"  [{status}] {p['name']}{default}")
+                print("\n💡 建议:")
+                print("  1. 运行 'stoi config' 检查配置")
+                print("  2. 或使用 --provider 指定其他提供商")
+            else:
+                print("\n📝 未检测到配置文件，可用环境变量:")
+                for pid, env_vars in ConfigManager.ENV_MAPPINGS.items():
+                    for var in env_vars:
+                        print(f"  export {var}=your_key_here  # {pid}")
+                print("\n💡 或使用交互式配置: stoi config")
             sys.exit(1)
         except ImportError as e:
             print(f"错误: {e}")
@@ -651,9 +665,17 @@ print(list(fib(10)))
             print("提示: 运行 'stoi config' 配置模型提供商，或设置环境变量")
 
     elif args.command == "analyze":
-        session_id = args.session
+        # 支持两种方式: stoi analyze <session_id> 或 stoi analyze --session <id>
+        session_id = args.session_id or args.session
+
         if not session_id:
-            print("错误：请指定会话ID (--session)")
+            print("❌ 错误：请指定会话ID")
+            print("")
+            print("用法:")
+            print("  stoi analyze <session_id>")
+            print("  stoi analyze --session <session_id>")
+            print("")
+            print("💡 提示：运行 'stoi sessions' 查看可用会话")
             sys.exit(1)
 
         if not client:
@@ -678,6 +700,30 @@ print(list(fib(10)))
     elif args.command == "stats":
         print("📈 统计功能开发中...")
         print("敬请期待 Phase 2！")
+
+    elif args.command == "gui":
+        # 启动 Apple Design Web GUI
+        try:
+            from stoi_web_apple import main as web_main
+            web_main()
+        except ImportError:
+            print("❌ 请先安装 Flask: pip3 install flask")
+            sys.exit(1)
+
+    elif args.command == "sessions":
+        # 从 Claude Code 导入会话列表
+        from claude_importer import list_claude_sessions, import_session
+
+        sessions = list_claude_sessions(limit=10)
+
+        if sessions:
+            print("\n💡 操作提示:")
+            print(f"  分析最新会话: stoi analyze {sessions[0]['id']}")
+            print(f"  分析并播报: stoi analyze {sessions[0]['id']} --dramatic")
+
+            # 自动导入到数据库
+            for session in sessions[:3]:  # 导入前 3 个
+                import_session(session['id'], db)
 
 
 if __name__ == "__main__":

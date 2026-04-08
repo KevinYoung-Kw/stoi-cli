@@ -10,5 +10,8 @@ rich>=13.0.0
 # 推荐 - 友好的交互式菜单（支持上下键导航）
 questionary>=2.0.0
 
+# 推荐 - Web GUI（Apple Design）
+flask>=2.0.0
+
 # 可选 - 如果使用旧版 DashScope SDK
 # dashscope>=1.0.0

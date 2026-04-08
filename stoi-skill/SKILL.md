@@ -4,9 +4,10 @@
 
 ## 💩 功能特色
 
-- `/stoi analyze` - 分析当前会话的 💩 屎量
-- `/stoi analyze --dramatic` - 戏剧化语音播报（屎量过高会警报！）
-- `/stoi tts "message"` - 测试 TTS 播报
+- **CLI 命令**: `stoi analyze` - 分析当前会话的 💩 屎量
+- **Web 界面**: `stoi gui` - 苹果风格网页界面
+- **戏剧播报**: `stoi analyze --dramatic` - 语音播报（屎量过高会警报！）
+- **TTS 测试**: `stoi tts "message"` - 测试 TTS 播报
 
 ## 🎭 屎量评级系统
 
@@ -26,10 +27,15 @@
 cd stoi-skill
 
 # 2. 安装依赖
-pip3 install dashscope
+pip3 install openai rich questionary
 
-# 3. 设置环境变量
+# 安装 Web GUI 依赖（可选）
+pip3 install flask  # Apple Design Web 界面
+
+# 3. 设置环境变量或配置
 export DASHSCOPE_API_KEY=your_key_here
+# 或运行交互式配置
+python3 stoi.py config
 
 # 4. 初始化
 python3 stoi.py init
@@ -105,11 +111,35 @@ python3 stoi.py tts --message "检测到屎山！建议立即清理！"
 > 🗣️ **"警报！检测到屎山！等级C！建议立即清理！"**
 > 🗣️ **"纯净度41分，含屎量59%。注意，你的Token正在变成屎！"**
 
+## 🎨 GUI 界面
+
+### Web 界面（Apple Design）
+
+简约、现代、优雅的苹果风格 Web 界面：
+
+```bash
+# 启动 Web GUI
+python3 stoi.py gui
+
+# 或使用启动器
+python3 stoi_gui.py
+```
+
+然后打开 http://127.0.0.1:5000
+
+**设计特点：**
+- 🎨 **苹果风格** - 简约、克制、优雅
+- 💎 **玻璃态设计** - backdrop-filter 毛玻璃效果
+- 🌈 **渐变等级卡** - S/A/B/C/D/F 等级使用不同渐变色
+- 📊 **数据可视化** - 进度条、统计卡片、维度分析
+- 📱 **响应式布局** - 适配各种屏幕尺寸
+
 ## 🔧 技术栈
 
 - Python 3.9+
-- DashScope API (Qwen-Max 做评估)
-- SQLite (本地存储)
+- OpenAI SDK（多提供商支持）
+- Flask（Web 界面）
+- SQLite（本地存储）
 - macOS `say` 命令 (TTS)
 
 ## 📝 TODO
