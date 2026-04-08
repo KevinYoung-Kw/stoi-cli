@@ -85,6 +85,67 @@ def score_style(score: float) -> str:
     else:            return "bold red"
 
 
+OPENCODE_DB = Path("~/.local/share/opencode/opencode.db").expanduser()
+
+
+def find_opencode_sessions() -> list[dict]:
+    """扫描 OpenCode SQLite 数据库中的会话"""
+    sessions = []
+    if not OPENCODE_DB.exists():
+        return sessions
+    try:
+        import sqlite3, json as _json
+        db = sqlite3.connect(str(OPENCODE_DB))
+        rows = db.execute("""
+            SELECT s.id, s.title, s.time_updated,
+                   COUNT(m.id) as msg_count
+            FROM session s
+            LEFT JOIN message m ON m.session_id = s.id
+                AND json_extract(m.data, '$.role') = 'assistant'
+                AND json_extract(m.data, '$.tokens.input') > 0
+            GROUP BY s.id
+            ORDER BY s.time_updated DESC
+            LIMIT 20
+        """).fetchall()
+        for r in rows:
+            sid, title, updated, turns = r
+            sessions.append({
+                "id": sid,
+                "path": OPENCODE_DB,
+                "name": (title or f"Session {sid[:8]}")[:35],
+                "mtime": (updated or 0) / 1000,
+                "turns": turns or 0,
+                "agent": "opencode",
+            })
+        db.close()
+    except Exception:
+        pass
+    return sessions
+
+
+def find_gemini_sessions() -> list[dict]:
+    """扫描 Gemini CLI 的历史 checkpoint 文件"""
+    sessions = []
+    gemini_dirs = [
+        Path("~/.gemini/history").expanduser(),
+        Path("~/.gemini").expanduser(),
+    ]
+    for base in gemini_dirs:
+        if not base.exists():
+            continue
+        for f in list(base.glob("*.json")) + list(base.glob("checkpoint_*.json")):
+            stat = f.stat()
+            sessions.append({
+                "path": f,
+                "name": f.stem[:30],
+                "size": stat.st_size,
+                "mtime": stat.st_mtime,
+                "agent": "gemini",
+            })
+    sessions.sort(key=lambda x: x["mtime"], reverse=True)
+    return sessions[:20]
+
+
 def find_claude_sessions() -> list[dict]:
     """扫描 Claude Code 的 session 文件"""
     sessions = []
@@ -104,6 +165,87 @@ def find_claude_sessions() -> list[dict]:
             })
     sessions.sort(key=lambda x: x["mtime"], reverse=True)
     return sessions[:20]
+
+
+def parse_opencode_session(session_id: str) -> list[dict]:
+    """从 OpenCode SQLite 读取指定 session 的 token 数据"""
+    records = []
+    if not OPENCODE_DB.exists():
+        return records
+    try:
+        import sqlite3, json as _json
+        db = sqlite3.connect(str(OPENCODE_DB))
+        rows = db.execute("""
+            SELECT data, time_created FROM message
+            WHERE session_id = ?
+            AND json_extract(data, '$.role') = 'assistant'
+            ORDER BY time_created ASC
+        """, (session_id,)).fetchall()
+        for i, (data_str, ts_ms) in enumerate(rows):
+            d = _json.loads(data_str)
+            t = d.get("tokens", {})
+            cache_info = t.get("cache", {})
+            if isinstance(cache_info, dict):
+                cache_read  = cache_info.get("read", 0)
+                cache_write = cache_info.get("write", 0)
+            else:
+                cache_read = cache_write = 0
+            usage = {
+                "input_tokens": t.get("input", 0),
+                "output_tokens": t.get("output", 0),
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": cache_write,
+            }
+            total = usage["input_tokens"] + cache_read + cache_write
+            if total == 0:
+                continue
+            stoi = calc_stoi(usage, turn_index=len(records))
+            records.append({
+                "turn": len(records),
+                "ts": ts_ms or 0,
+                "usage": usage,
+                "stoi": stoi,
+            })
+        db.close()
+    except Exception:
+        pass
+    return records
+
+
+def parse_gemini_session(path: Path) -> list[dict]:
+    """解析 Gemini CLI checkpoint JSON"""
+    records = []
+    try:
+        import json as _json
+        data = _json.loads(path.read_text(encoding="utf-8"))
+        # Gemini checkpoint format varies — try common structures
+        turns = data if isinstance(data, list) else data.get("turns", data.get("messages", []))
+        for i, turn in enumerate(turns):
+            usage = turn.get("usageMetadata", turn.get("usage", {}))
+            if not usage:
+                continue
+            # Map Gemini fields to STOI standard
+            input_tokens  = usage.get("promptTokenCount", usage.get("input_tokens", 0))
+            output_tokens = usage.get("candidatesTokenCount", usage.get("output_tokens", 0))
+            cache_read    = usage.get("cachedContentTokenCount", usage.get("cache_read_input_tokens", 0))
+            stoi_usage = {
+                "input_tokens": max(0, input_tokens - cache_read),
+                "output_tokens": output_tokens,
+                "cache_read_input_tokens": cache_read,
+                "cache_creation_input_tokens": 0,
+            }
+            if input_tokens == 0:
+                continue
+            stoi = calc_stoi(stoi_usage, turn_index=len(records))
+            records.append({
+                "turn": len(records),
+                "ts": 0,
+                "usage": stoi_usage,
+                "stoi": stoi,
+            })
+    except Exception:
+        pass
+    return records
 
 
 def parse_session_file(path: Path, agent: str = "claude_code") -> list[dict]:
@@ -132,6 +274,12 @@ def parse_session_file(path: Path, agent: str = "claude_code") -> list[dict]:
                                 ts = datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp() * 1000
                             except Exception:
                                 ts = 0
+
+                elif agent == "opencode":
+                    # OpenCode: read from SQLite, path is the DB file
+                    # This branch won't be hit for line-by-line parsing
+                    # OpenCode uses _parse_opencode_db instead
+                    pass
 
                 elif agent == "proxy":
                     if "usage" in obj:
@@ -337,8 +485,29 @@ class SessionSelectScreen(Screen):
                 }]
             else:
                 lv.append(ListItem(Label("  [dim]未找到 proxy 日志，请先运行 stoi start[/dim]")))
+        elif agent == "opencode":
+            sessions = find_opencode_sessions()
+            self.app.session_list = sessions
+            if not sessions:
+                lv.append(ListItem(Label("  [dim]未找到 OpenCode 会话 (~/.local/share/opencode/)[/dim]")))
+            for s in sessions:
+                mtime = datetime.fromtimestamp(s["mtime"]).strftime("%m-%d %H:%M")
+                label = f"  {mtime}  {s['name']:<35}  {s.get('turns',0):>3} 轮"
+                lv.append(ListItem(Label(label)))
+
+        elif agent == "gemini":
+            sessions = find_gemini_sessions()
+            self.app.session_list = sessions
+            if not sessions:
+                lv.append(ListItem(Label("  [dim]未找到 Gemini CLI 会话 (~/.gemini/history/)[/dim]")))
+            for s in sessions:
+                mtime = datetime.fromtimestamp(s["mtime"]).strftime("%m-%d %H:%M")
+                size_kb = s["size"] // 1024
+                label = f"  {mtime}  {s['name']:<30}  {size_kb:>5} KB"
+                lv.append(ListItem(Label(label)))
+
         else:
-            lv.append(ListItem(Label(f"  [dim]{agent} 暂不支持，请选择 Claude Code 或 Proxy[/dim]")))
+            lv.append(ListItem(Label(f"  [dim]{agent} 暂不支持[/dim]")))
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         idx = event.list_view.index
@@ -479,9 +648,17 @@ class DashboardScreen(Screen):
         if not session:
             return
 
-        path = session.get("path")
         agent = session.get("agent", self.app.selected_agent)
-        self.records = parse_session_file(Path(path), agent)
+        path  = session.get("path")
+
+        if agent == "opencode":
+            # OpenCode: parse from SQLite by session ID
+            self.records = parse_opencode_session(session.get("id", ""))
+        elif agent == "gemini":
+            self.records = parse_gemini_session(Path(path))
+        else:
+            self.records = parse_session_file(Path(path), agent)
+
         self._update_display()
 
     def _update_display(self) -> None:
