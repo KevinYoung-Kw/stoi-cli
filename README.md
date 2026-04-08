@@ -2,11 +2,13 @@
 
 > A CLI tool that analyzes Claude Code conversation efficiency with a 💩 Shit Meter and TTS voice announcements!
 
-[English](#english) | [中文](#中文)
+**[English](#english) | [中文](#中文)**
 
 ---
 
-## English
+<a name="english"></a>
+
+## 🌐 English
 
 ### What is STOI?
 
@@ -61,31 +63,26 @@ python3 stoi.py analyze --session your_session_id --dramatic
 python3 stoi.py tts --message "Shit mountain detected! Evacuate immediately!"
 ```
 
-### 🛠️ Tech Stack
+---
 
-- Python 3.9+
-- DashScope API (Qwen-Max for evaluation)
-- SQLite (local storage)
-- macOS `say` command (TTS)
-
-### 📋 Requirements
-
-- macOS (for TTS features)
-- Python 3.9 or higher
-- DashScope API key
+**[⬆ Back to Top](#-stoi---shit-token-on-investment) | [中文 →](#中文)**
 
 ---
 
-## 中文
+<a name="中文"></a>
+
+## 🌐 中文
 
 ### STOI 是什么？
 
 STOI（Shit Token On Investment，屎量投资回报率）是一个有趣但实用的 CLI 工具，用于分析 AI 对话的效率。它评估你的 Token 使用中有多少真正产生了价值 - 并用幽默的 💩 评级系统和可选的语音警报来指出"屎"的部分。
 
+名字灵感来自 ROI（投资回报率），但我们关注的是 Token 效率！
+
 ### ✨ 功能特色
 
 - 💩 **屎量计** - 用我们独家的便便刻度来量化对话效率
-- 🎭 **戏剧化 TTS** - 根据屎量等级升级的语音播报
+- 🎭 **戏剧化 TTS** - 根据屎量等级升级的语音播报（屎量过高会警报！）
 - 📊 **多维度分析** - 问题解决度、代码质量、信息密度
 - 🤖 **AI 驱动评估** - 使用 Qwen-Max 进行智能评估
 - 🗣️ **macOS 语音集成** - 内置有个性化的文字转语音
@@ -131,27 +128,101 @@ python3 stoi.py analyze --session your_session_id --dramatic
 python3 stoi.py tts --message "检测到屎山！建议立即清理！"
 ```
 
+### 📊 输出示例
+
+#### 🌸 清新脱俗 (S级)
+```
+==================================================
+💩 STOI 屎量分析报告
+==================================================
+
+【💩 屎量指数】
+  纯净度: 95.0/100 (越高越好)
+  等级: 💎 (S)
+  含屎量: 5.0%
+  屎量评级: 🌸 清新脱俗
+
+【💩 维度分析】
+  问题解决度: 💎💎💎💎💎 (5/5)
+  代码质量: 💎💎💎💎💩 (4/5)
+  信息密度: 💎💎💎💎💎 (5/5)
+
+【🤖 AI屎评】
+  太棒了！你的代码清新脱俗！
+
+【💎 建议】
+  继续保持！
+```
+
+#### 💩💩 屎量可观 (C级)
+```
+==================================================
+💩 STOI 屎量分析报告
+==================================================
+
+【💩 屎量指数】
+  纯净度: 41.0/100 (越高越好)
+  等级: 💩💩 (C)
+  含屎量: 59.0%
+  屎量评级: 💩💩 屎量可观
+
+【💩 维度分析】
+  问题解决度: 💎💎💩💩💩 (2/5)
+  信息密度: 💎💩💩💩💩 (1/5)
+
+【🤖 AI屎评】
+  回复冗长且缺乏实质性内容
+
+【💩 建议】
+  开始有屎了！建议检查是否有废话。
+```
+
+### 🎤 TTS 语音效果
+
+**普通模式**: "分析完成。等级C，开始有屎，建议检查是否有废话。"
+
+**戏剧模式** (`--dramatic`):
+> 🗣️ **"警报！检测到屎山！等级C！建议立即清理！"**
+> 🗣️ **"纯净度41分，含屎量59%。注意，你的Token正在变成屎！"**
+
 ---
 
-## 🤝 Contributing
+**[⬆ 回到顶部](#-stoi---shit-token-on-investment) | [English →](#english)**
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+---
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+## 🛠️ Tech Stack / 技术栈
 
-## 📄 License
+- Python 3.9+
+- DashScope API (Qwen-Max for evaluation)
+- SQLite (local storage)
+- macOS `say` command (TTS)
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 📋 Requirements / 系统要求
 
-## 🙏 Acknowledgments
+- macOS（for TTS / 用于 TTS 功能）
+- Python 3.9 or higher / 或更高版本
+- DashScope API key / API 密钥
 
-- Thanks to [DashScope](https://dashscope.aliyun.com/) for the Qwen-Max API
-- Inspired by the need to optimize AI conversation efficiency
-- Built with 💩 and ❤️
+## 🤝 Contributing / 贡献指南
+
+Contributions are welcome! / 欢迎贡献！
+
+1. Fork the repository / Fork 本仓库
+2. Create your feature branch / 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes / 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch / 推送到分支 (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request / 打开 Pull Request
+
+## 📄 License / 许可证
+
+This project is licensed under the MIT License.
+本项目采用 MIT 许可证。
+
+## 🙏 Acknowledgments / 致谢
+
+- Thanks to [DashScope](https://dashscope.aliyun.com/) / 感谢 [DashScope](https://dashscope.aliyun.com/)
+- Built with 💩 and ❤️ / 用 💩 和 ❤️ 构建
 
 ---
 
