@@ -235,8 +235,14 @@ def calc_stoi(usage: dict, turn_index: int = -1, session_turns: list = None) -> 
     is_baseline = False
     note = ""
 
+    # 情况0：output_tokens=0 → 流式推理中间状态 / thinking stub，不是真实对话轮次
+    # Claude Code 在流式输出时会先发多个 output=0 的占位请求，这些不参与评分
+    if output_tokens == 0:
+        is_baseline = True
+        note = "流式推理占位轮（output=0），不计入含屎量"
+
     # 情况1：第一轮或无法判断轮次 → 建缓存基准轮
-    if turn_index == 0:
+    elif turn_index == 0:
         is_baseline = True
         note = "首轮建缓存，基准轮不计含屎"
 
@@ -245,9 +251,8 @@ def calc_stoi(usage: dict, turn_index: int = -1, session_turns: list = None) -> 
         is_baseline = True
         note = f"缓存重建轮（写入 {cache_creation:,} tokens）"
 
-    # 情况3：上一轮也是 cache_read=0 的全新对话 → session 首轮
+    # 情况3：无法判断轮次时，若完全没有缓存信息则跳过
     elif turn_index == -1 and cache_read == 0 and cache_creation == 0:
-        # 无法判断轮次时，若完全没有缓存信息则跳过
         is_baseline = True
         note = "无缓存信息，跳过评分"
 
