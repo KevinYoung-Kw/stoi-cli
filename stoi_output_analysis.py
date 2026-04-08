@@ -1,0 +1,293 @@
+#!/usr/bin/env python3
+"""
+stoi_output_analysis.py — Output Token 冗余检测
+
+借鉴 Thinking Token 冗余分析的方法论（Yuan 2026, Zhu 2026, Jiang 2026）
+将五种冗余模式映射到普通 Output Token 的检测：
+
+Thinking Token 模式          → Output Token 对应问题
+─────────────────────────────────────────────────────
+重复验证（Jaccard > 0.8）    → 连续轮次输出高度重复
+无关探索（Forest of Errors） → 给出多方案但用户只需一个
+无差别反思                   → Yapping 废话框架
+深度冗余                     → 回答末尾重复开头内容
+过度思考                     → 简单问题输出过长
+
+数据来源：stoi_proxy.py 存储的 output_text 字段
+"""
+
+import re
+import json
+from pathlib import Path
+from typing import Optional
+
+
+# ── Yapping 模式（无差别反思对应）────────────────────────────────────────────
+YAPPING_PATTERNS = [
+    # 开头废话
+    (r'^(好的|当然|非常好|很好)[,，]?\s*(我|让我)', "开头客套"),
+    (r'^作为.*?(AI|助手|语言模型)', "自我介绍废话"),
+    (r'^首先.*?其次.*?最后', "三段式框架废话"),
+    # 结尾废话
+    (r'希望.*?对您?有(所)?帮助', "结尾客套"),
+    (r'如果.*?(还有|有任何).*?问题', "结尾问询"),
+    (r'请.*?随时(告诉我|提问)', "结尾邀请"),
+    # 重复确认
+    (r'如(您?|你)所(说|述|提到)', "重复用户内容"),
+    (r'您?提到的.{0,20}是', "重复用户内容"),
+]
+
+
+def detect_yapping(text: str) -> dict:
+    """检测输出中的 Yapping 废话（对应 Thinking 的无差别反思）"""
+    if not text:
+        return {"yapping_rate": 0.0, "patterns": []}
+
+    total_chars = len(text)
+    found = []
+    yapping_chars = 0
+
+    for pattern, label in YAPPING_PATTERNS:
+        matches = re.findall(pattern, text, re.MULTILINE | re.DOTALL)
+        if matches:
+            for m in matches:
+                chars = len(m) if isinstance(m, str) else sum(len(x) for x in m)
+                yapping_chars += chars
+                found.append({"pattern": label, "sample": str(m)[:50]})
+
+    return {
+        "yapping_rate": round(min(yapping_chars / total_chars, 1.0), 3) if total_chars > 0 else 0.0,
+        "patterns": found[:5],
+    }
+
+
+# ── 重复内容检测（重复验证对应）──────────────────────────────────────────────
+def jaccard_similarity(text_a: str, text_b: str) -> float:
+    """计算两段文本的 Jaccard 相似度（词级别）"""
+    if not text_a or not text_b:
+        return 0.0
+    words_a = set(re.findall(r'\w+', text_a.lower()))
+    words_b = set(re.findall(r'\w+', text_b.lower()))
+    if not words_a and not words_b:
+        return 0.0
+    intersection = len(words_a & words_b)
+    union = len(words_a | words_b)
+    return intersection / union if union > 0 else 0.0
+
+
+def detect_repetition(turns: list[dict]) -> dict:
+    """
+    检测连续轮次之间的重复（对应 Thinking 的重复验证）
+    turns: [{"output_text": str, "turn": int}, ...]
+    """
+    if len(turns) < 2:
+        return {"repetition_rate": 0.0, "repeat_pairs": []}
+
+    outputs = [(t.get("turn", i), t.get("output_text", ""))
+               for i, t in enumerate(turns) if t.get("output_text")]
+
+    repeat_pairs = []
+    for i in range(len(outputs) - 1):
+        turn_a, text_a = outputs[i]
+        turn_b, text_b = outputs[i + 1]
+        sim = jaccard_similarity(text_a[:500], text_b[:500])
+        if sim > 0.5:  # 50% 相似即为潜在重复
+            repeat_pairs.append({
+                "turns": [turn_a, turn_b],
+                "similarity": round(sim, 3),
+                "severity": "HIGH" if sim > 0.8 else "MED",
+            })
+
+    total_pairs = len(outputs) - 1
+    rep_rate = len(repeat_pairs) / total_pairs if total_pairs > 0 else 0.0
+
+    return {
+        "repetition_rate": round(rep_rate, 3),
+        "repeat_pairs": repeat_pairs[:5],
+        "high_severity_count": sum(1 for p in repeat_pairs if p["severity"] == "HIGH"),
+    }
+
+
+# ── 多方案冗余（无关探索对应）────────────────────────────────────────────────
+MULTI_SOLUTION_PATTERNS = [
+    r'(方案|方法|选项|option|approach)\s*[一二三1-3①-③]',
+    r'(第[一二三]种|第[123]个)\s*(方案|方法|选择)',
+    r'(alternatively|alternatively,|another approach)',
+    r'(或者你也可以|你还可以|另一种方式)',
+]
+
+def detect_multi_solution(text: str) -> dict:
+    """检测是否给出了不必要的多个方案（对应 Thinking 的无关探索）"""
+    if not text:
+        return {"has_multi_solution": False, "solution_count": 0}
+
+    count = 0
+    for pattern in MULTI_SOLUTION_PATTERNS:
+        matches = re.findall(pattern, text, re.IGNORECASE)
+        count += len(matches)
+
+    return {
+        "has_multi_solution": count >= 2,
+        "solution_count": count,
+        "note": "给出多个方案时，用户通常只需要最优的一个（参考 Forest of Errors 论文）" if count >= 2 else "",
+    }
+
+
+# ── 首尾重复（深度冗余对应）──────────────────────────────────────────────────
+def detect_head_tail_redundancy(text: str) -> dict:
+    """检测回答首尾是否重复总结（对应 Thinking 的深度冗余）"""
+    if not text or len(text) < 200:
+        return {"has_redundancy": False, "similarity": 0.0}
+
+    # 取前 20% 和后 20% 对比
+    split = max(len(text) // 5, 100)
+    head = text[:split]
+    tail = text[-split:]
+    sim = jaccard_similarity(head, tail)
+
+    return {
+        "has_redundancy": sim > 0.4,
+        "similarity": round(sim, 3),
+        "note": "回答末尾重复了开头的内容，可删除" if sim > 0.4 else "",
+    }
+
+
+# ── 任务复杂度 vs 输出长度（过度思考对应）───────────────────────────────────
+def detect_overthinking(user_message: str, output_text: str) -> dict:
+    """
+    检测是否对简单问题给出了过长回答（对应 Thinking 的过度思考/Overthinking）
+    启发式：用户消息很短 + 输出很长 → 可能过度
+    """
+    if not user_message or not output_text:
+        return {"is_overthinking": False, "ratio": 0.0}
+
+    user_len   = len(user_message.split())
+    output_len = len(output_text.split())
+    ratio = output_len / max(user_len, 1)
+
+    # 用户消息 < 10 词但输出 > 200 词，比例 > 20x → 可能过度
+    is_overthinking = user_len < 10 and output_len > 200 and ratio > 20
+
+    return {
+        "is_overthinking": is_overthinking,
+        "ratio": round(ratio, 1),
+        "user_words":   user_len,
+        "output_words": output_len,
+        "note": f"简单问题（{user_len}词）却给出{output_len}词回答，考虑加输出长度约束" if is_overthinking else "",
+    }
+
+
+# ── 综合分析 ──────────────────────────────────────────────────────────────────
+def analyze_output_quality(proxy_records: list[dict]) -> dict:
+    """
+    基于 proxy 记录的 output_text 做综合输出质量分析。
+    proxy_records: stoi proxy log 里的记录（需有 output_text 字段）
+    """
+    valid_records = [r for r in proxy_records
+                     if r.get("output_text") and not r.get("stoi", {}).get("is_baseline")]
+
+    if not valid_records:
+        return {"error": "无 output_text 数据，请先使用 stoi start 代理模式收集数据"}
+
+    # 汇总各维度分析
+    yapping_scores   = []
+    multi_sol_count  = 0
+    head_tail_count  = 0
+    overthink_count  = 0
+
+    for rec in valid_records:
+        out  = rec.get("output_text", "")
+        user = rec.get("user_message", "")
+
+        y = detect_yapping(out)
+        yapping_scores.append(y["yapping_rate"])
+
+        ms = detect_multi_solution(out)
+        if ms["has_multi_solution"]:
+            multi_sol_count += 1
+
+        ht = detect_head_tail_redundancy(out)
+        if ht["has_redundancy"]:
+            head_tail_count += 1
+
+        ot = detect_overthinking(user, out)
+        if ot["is_overthinking"]:
+            overthink_count += 1
+
+    n = len(valid_records)
+    avg_yapping = sum(yapping_scores) / n if n > 0 else 0.0
+
+    # 重复检测
+    rep = detect_repetition(valid_records)
+
+    # 综合输出质量分（越高越浪费）
+    output_waste_score = round(
+        avg_yapping * 40 +
+        (rep["repetition_rate"]) * 30 +
+        (multi_sol_count / n) * 20 +
+        (head_tail_count / n) * 10,
+        1
+    )
+
+    issues = []
+    if avg_yapping > 0.05:
+        issues.append({
+            "type": "yapping",
+            "severity": "HIGH" if avg_yapping > 0.15 else "MED",
+            "detail": f"平均 {avg_yapping*100:.1f}% 输出是礼貌废话（Yapping）",
+            "fix": "在 CLAUDE.md 中加入：不要开头客套，不要结尾确认，直接输出结果",
+        })
+    if rep["repetition_rate"] > 0.2:
+        issues.append({
+            "type": "repetition",
+            "severity": "HIGH" if rep["repetition_rate"] > 0.5 else "MED",
+            "detail": f"{rep['repetition_rate']*100:.0f}% 的相邻轮次输出高度相似（Jaccard 相似度 > 50%）",
+            "fix": "任务已完成后开新 session，避免 AI 重复解释同样内容",
+        })
+    if multi_sol_count > n * 0.3:
+        issues.append({
+            "type": "multi_solution",
+            "severity": "MED",
+            "detail": f"{multi_sol_count}/{n} 轮输出给了多个方案（参考 Forest of Errors：第一个方案通常最优）",
+            "fix": "在 prompt 中明确：只给一个最优方案，不需要列举备选",
+        })
+    if overthink_count > n * 0.2:
+        issues.append({
+            "type": "overthinking",
+            "severity": "MED",
+            "detail": f"{overthink_count} 轮对简单问题给出了过长回答",
+            "fix": "加入输出约束：简单问题控制在 200 token 以内",
+        })
+
+    return {
+        "analyzed_turns":     n,
+        "output_waste_score": output_waste_score,
+        "avg_yapping_rate":   round(avg_yapping, 3),
+        "repetition_rate":    rep["repetition_rate"],
+        "multi_solution_pct": round(multi_sol_count / n, 3) if n > 0 else 0,
+        "head_tail_redundancy_pct": round(head_tail_count / n, 3) if n > 0 else 0,
+        "overthinking_pct":   round(overthink_count / n, 3) if n > 0 else 0,
+        "issues":             issues,
+        "high_repeat_pairs":  rep.get("high_severity_count", 0),
+    }
+
+
+def load_proxy_records() -> list[dict]:
+    """从 ~/.stoi/sessions.jsonl 加载 proxy 记录"""
+    log_file = Path("~/.stoi/sessions.jsonl").expanduser()
+    if not log_file.exists():
+        return []
+    records = []
+    try:
+        with open(log_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    records.append(json.loads(line))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return records

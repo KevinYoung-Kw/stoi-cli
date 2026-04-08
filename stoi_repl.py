@@ -50,6 +50,7 @@ COMMANDS = {
     "/status":    ("查看实时监控状态",                    "需先运行 stoi start"),
     "/compare":   ("对比两个 session 的含屎量变化",       "选 before/after"),
     "/settings":  ("配置 LLM provider 和 API key",       ""),
+    "/output":    ("输出质量分析（Yapping/重复/多方案检测）",   "需先运行 stoi start"),
     "/overview":  ("全局 Token 效率报告（全部历史 session）",    "比 /report 更全面"),
     "/setup":     ("一键配置 MCP，让 Claude Code 直接调用 STOI", ""),
     "/blame":     ("定位 Cache Miss 的造屎元凶",          ""),
@@ -235,6 +236,9 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/status":
         _run_status()
+
+    elif cmd == "/output":
+        _run_output_analysis()
 
     elif cmd == "/overview":
         _run_overview()
@@ -476,6 +480,56 @@ def _show_session_mini_list(files):
     console.print()
 
 
+def _run_output_analysis():
+    """基于 proxy 数据分析输出质量（借鉴 Thinking Token 冗余检测方法论）"""
+    from stoi_output_analysis import load_proxy_records, analyze_output_quality
+
+    console.print()
+    records = load_proxy_records()
+
+    if not records:
+        console.print("  [yellow]无 proxy 数据[/yellow]")
+        console.print("  [dim]先运行 stoi start，用 Claude Code 正常工作，再来分析输出质量[/dim]")
+        return
+
+    has_text = [r for r in records if r.get("output_text")]
+    if not has_text:
+        console.print(f"  [yellow]已有 {len(records)} 条记录，但没有 output_text[/yellow]")
+        console.print("  [dim]需要更新版的 stoi_proxy.py 才能收集输出文本，请重启代理[/dim]")
+        return
+
+    with console.status(f"[dim]分析 {len(has_text)} 轮输出...[/dim]", spinner="dots"):
+        result = analyze_output_quality(records)
+
+    if "error" in result:
+        console.print(f"  [yellow]{result['error']}[/yellow]")
+        return
+
+    score = result["output_waste_score"]
+    color = "green" if score < 20 else "yellow" if score < 40 else "red"
+
+    console.print(f"  [bold #FFB800]📤 输出质量分析[/bold #FFB800]  [dim]{result['analyzed_turns']} 轮（来自代理模式）[/dim]")
+    console.print()
+    console.print(f"  [dim]输出浪费分[/dim]   [{color}]{score:.1f}/100[/{color}]  [dim]（越低越好）[/dim]")
+    console.print(f"  [dim]Yapping 率[/dim]   [white]{result['avg_yapping_rate']*100:.1f}%[/white]  [dim]礼貌废话占比[/dim]")
+    console.print(f"  [dim]重复输出率[/dim]   [white]{result['repetition_rate']*100:.1f}%[/white]  [dim]相邻轮次高度相似[/dim]")
+    console.print(f"  [dim]多方案浪费[/dim]   [white]{result['multi_solution_pct']*100:.1f}%[/white]  [dim]轮次[/dim]")
+    console.print(f"  [dim]过度输出率[/dim]   [white]{result['overthinking_pct']*100:.1f}%[/white]  [dim]简单问题给长回答[/dim]")
+    console.print()
+
+    if result["issues"]:
+        console.print("  [bold white]发现的问题[/bold white]")
+        for iss in result["issues"]:
+            sev_color = "red" if iss["severity"] == "HIGH" else "yellow"
+            console.print(f"  [{sev_color}]▸ {iss['detail']}[/{sev_color}]")
+            console.print(f"    [dim]→ {iss['fix']}[/dim]")
+    else:
+        console.print("  [green]✅ 输出质量良好[/green]")
+    console.print()
+    console.print("  [dim]方法论来源：Yuan et al. 2026 (Graph-Based CoT Pruning), Jiang et al. 2026 (Forest of Errors)[/dim]")
+    console.print()
+
+
 def _run_overview():
     """全局 Token 效率报告——基于 stats-cache.json，覆盖所有历史 session"""
     from stoi_core import get_global_efficiency_report
@@ -580,21 +634,30 @@ def _run_setup():
         console.print("  [dim]已取消[/dim]")
         return
 
-    # 写入 Claude Code settings.json
+    # 用 claude mcp add 命令注册（最可靠的方式）
+    import subprocess
+    mcp_path = str(mcp_script.resolve())
     for name, settings_path in agents_found:
         try:
-            data = json.loads(settings_path.read_text(encoding="utf-8"))
-            if "mcpServers" not in data:
-                data["mcpServers"] = {}
-            data["mcpServers"]["stoi"] = {
-                "command": "python3",
-                "args": [str(mcp_script.resolve())],
-                "env": {}
-            }
-            settings_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-            console.print(f"  [green]✅ {name} MCP 配置完成[/green]")
+            result = subprocess.run(
+                ["claude", "mcp", "add", "stoi", "--", "python3", mcp_path],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                console.print(f"  [green]✅ {name} MCP 配置完成（claude mcp add）[/green]")
+            else:
+                # Fallback: write settings.json directly
+                data = json.loads(settings_path.read_text(encoding="utf-8"))
+                if "mcpServers" not in data:
+                    data["mcpServers"] = {}
+                data["mcpServers"]["stoi"] = {
+                    "command": "python3",
+                    "args": [mcp_path],
+                }
+                settings_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                console.print(f"  [green]✅ {name} MCP 配置完成（settings.json）[/green]")
         except Exception as e:
-            console.print(f"  [red]✗ {name} 配置失败: {e}[/red]")
+            console.print(f"  [red]✗ 配置失败: {e}[/red]")
             _show_mcp_manual(mcp_script)
             return
 
