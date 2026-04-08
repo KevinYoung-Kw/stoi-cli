@@ -22,19 +22,21 @@ from pathlib import Path
 from typing import Optional
 
 
-# ── Yapping 模式（无差别反思对应）────────────────────────────────────────────
+# ── Yapping 模式（针对 Claude Code 工具型输出）────────────────────────────────
+# Claude Code 的输出不是对话式，而是任务执行报告
+# Yapping = 重复总结、不必要的验证说明、多余的成功确认
 YAPPING_PATTERNS = [
-    # 开头废话
+    # 对话式废话（仍然可能出现）
     (r'^(好的|当然|非常好|很好)[,，]?\s*(我|让我)', "开头客套"),
     (r'^作为.*?(AI|助手|语言模型)', "自我介绍废话"),
-    (r'^首先.*?其次.*?最后', "三段式框架废话"),
-    # 结尾废话
     (r'希望.*?对您?有(所)?帮助', "结尾客套"),
-    (r'如果.*?(还有|有任何).*?问题', "结尾问询"),
-    (r'请.*?随时(告诉我|提问)', "结尾邀请"),
-    # 重复确认
-    (r'如(您?|你)所(说|述|提到)', "重复用户内容"),
-    (r'您?提到的.{0,20}是', "重复用户内容"),
+    (r'如果.*?(还有|有任何).*?问题.*?随时', "结尾问询"),
+    # Claude Code 特有的冗余模式
+    (r'(已完成|操作完成|执行完毕)[。！]?\s*(如果|需要|请)', "完成后追问"),
+    (r'(以上|如上|综上)(所述|内容|改动).*?(完整|正确|符合)', "重复总结"),
+    (r'(总结|总结如下|主要改动|改动如下)[:：]\s*\n.*?[-•].*?\n.*?[-•]', "不必要的总结列表"),
+    # 重复验证（执行完还要说一遍做了什么）
+    (r'(文件|代码|内容).{0,10}(已|成功).{0,20}(创建|修改|更新|完成).*?主要(改动|变化|内容)', "执行+验证重复"),
 ]
 
 
@@ -290,4 +292,93 @@ def load_proxy_records() -> list[dict]:
                     continue
     except Exception:
         pass
+    return records
+
+
+def load_session_conversation(session_path: Path) -> list[dict]:
+    """
+    从 Claude Code session JSONL 直接读取对话对（不需要代理模式）
+    结合 ~/.claude/history.jsonl 的用户消息 + session 文件的 AI 回复
+    返回：[{"turn": int, "user_message": str, "output_text": str, "stoi": dict}]
+    """
+    records = []
+
+    # 读 AI 回复（含 usage）
+    try:
+        with open(session_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if obj.get("type") != "assistant":
+                        continue
+                    msg = obj.get("message", {})
+                    usage = msg.get("usage", {})
+                    if not usage:
+                        continue
+
+                    # 提取 AI 输出文本
+                    output_text = ""
+                    for c in (msg.get("content") or []):
+                        if isinstance(c, dict) and c.get("type") == "text":
+                            output_text += c.get("text", "")
+
+                    # 过滤流式占位轮
+                    if usage.get("output_tokens", 0) == 0:
+                        continue
+
+                    records.append({
+                        "turn":        len(records),
+                        "output_text": output_text[:1000],
+                        "user_message": "",  # 稍后填充
+                        "stoi":        {"is_baseline": False},
+                        "usage":       usage,
+                        "session_id":  obj.get("sessionId", ""),
+                        "ts":          obj.get("timestamp", 0),
+                    })
+                except Exception:
+                    continue
+    except Exception:
+        return []
+
+    # 用 history.jsonl 回填用户消息
+    history_file = Path("~/.claude/history.jsonl").expanduser()
+    if history_file.exists():
+        try:
+            session_id = records[0]["session_id"] if records else ""
+            user_msgs = []
+            with open(history_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        if obj.get("sessionId") == session_id:
+                            user_msgs.append({
+                                "text": obj.get("display", "")[:200],
+                                "ts":   obj.get("timestamp", 0),
+                            })
+                    except Exception:
+                        continue
+
+            # 按时间戳配对：每条 AI 回复找前面最近的用户消息
+            for rec in records:
+                rec_ts = rec.get("ts", 0)
+                if isinstance(rec_ts, str):
+                    try:
+                        from datetime import datetime
+                        rec_ts = datetime.fromisoformat(rec_ts.replace("Z", "+00:00")).timestamp() * 1000
+                    except Exception:
+                        rec_ts = 0
+                # 找时间戳比这轮小的最后一条用户消息
+                preceding = [u for u in user_msgs if u["ts"] <= rec_ts]
+                if preceding:
+                    rec["user_message"] = preceding[-1]["text"]
+
+        except Exception:
+            pass
+
     return records

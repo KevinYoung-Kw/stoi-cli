@@ -481,24 +481,30 @@ def _show_session_mini_list(files):
 
 
 def _run_output_analysis():
-    """基于 proxy 数据分析输出质量（借鉴 Thinking Token 冗余检测方法论）"""
-    from stoi_output_analysis import load_proxy_records, analyze_output_quality
+    """基于 session 文件直接分析输出质量（不需要代理模式）"""
+    from stoi_output_analysis import load_session_conversation, analyze_output_quality
+    from stoi_core import find_claude_sessions
 
     console.print()
-    records = load_proxy_records()
+
+    # 直接读当前 session 文件
+    session_path = state.current_session
+    if not session_path or not Path(session_path).exists():
+        files = find_claude_sessions(1)
+        if not files:
+            console.print("  [yellow]未找到 session 文件[/yellow]")
+            return
+        session_path = files[0]
+        console.print(f"  [dim]自动选取: {Path(session_path).name}[/dim]")
+
+    with console.status(f"[dim]读取并分析对话...[/dim]", spinner="dots"):
+        records = load_session_conversation(Path(session_path))
 
     if not records:
-        console.print("  [yellow]无 proxy 数据[/yellow]")
-        console.print("  [dim]先运行 stoi start，用 Claude Code 正常工作，再来分析输出质量[/dim]")
+        console.print("  [yellow]session 为空或无输出文本[/yellow]")
         return
 
-    has_text = [r for r in records if r.get("output_text")]
-    if not has_text:
-        console.print(f"  [yellow]已有 {len(records)} 条记录，但没有 output_text[/yellow]")
-        console.print("  [dim]需要更新版的 stoi_proxy.py 才能收集输出文本，请重启代理[/dim]")
-        return
-
-    with console.status(f"[dim]分析 {len(has_text)} 轮输出...[/dim]", spinner="dots"):
+    with console.status(f"[dim]分析 {len(records)} 轮输出质量...[/dim]", spinner="dots"):
         result = analyze_output_quality(records)
 
     if "error" in result:
