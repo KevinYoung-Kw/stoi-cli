@@ -5,6 +5,7 @@ STOI Web GUI - Apple Design Style
 """
 
 import sys
+import socket
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -18,6 +19,7 @@ from importers.claude import ClaudeImporter
 from stoi import STOIDatabase, STOIAnalyzer, LLMJudge, Speaker
 
 app = Flask(__name__)
+app.config["TRUSTED_HOSTS"] = ["127.0.0.1", "localhost", "::1", "[::1]"]
 
 # 苹果风格 HTML 模板
 HTML_TEMPLATE = """
@@ -762,10 +764,37 @@ def api_analyze(session_id: str):
         return jsonify({'error': str(e)}), 500
 
 
-def main():
+def _is_port_available(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _pick_gui_port(host: str, preferred_port: int | None = None) -> int:
+    candidates = []
+    if preferred_port is not None:
+        candidates.append(preferred_port)
+
+    # 5000 在 macOS 上常被系统服务占用，默认避开它。
+    candidates.extend([8765, 5001, 5050, 8080])
+
+    for port in candidates:
+        if _is_port_available(host, port):
+            return port
+
+    raise RuntimeError("找不到可用的本地端口，请使用 --port 指定")
+
+
+def main(port: int | None = None):
+    host = "127.0.0.1"
+    actual_port = _pick_gui_port(host, port)
     print("🌐 Starting STOI Web GUI (Apple Design)...")
-    print("Open: http://127.0.0.1:5000")
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    print(f"Open: http://{host}:{actual_port}")
+    app.run(host=host, port=actual_port, debug=False)
 
 
 if __name__ == '__main__':

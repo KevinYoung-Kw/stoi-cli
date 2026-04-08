@@ -6,6 +6,7 @@ STOI Configuration - Simple like OpenClaw
 
 import os
 import sys
+import importlib.util
 from typing import Optional, Dict
 
 # 提供商配置
@@ -105,6 +106,23 @@ def get_available_providers() -> Dict[str, Dict]:
     return available
 
 
+def _sanitize_proxy_env_for_httpx():
+    """
+    清理 httpx 不支持的 SOCKS 代理环境变量。
+
+    当前环境如果设置了 ALL_PROXY=socks5://...，但没有安装 socksio，
+    OpenAI/httpx 会在客户端初始化阶段直接抛 ImportError。
+    这里仅移除 SOCKS 类型的代理变量，保留普通 HTTP(S) 代理。
+    """
+    if importlib.util.find_spec("socksio") is not None:
+        return
+
+    for env_var in ("ALL_PROXY", "all_proxy", "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        value = os.getenv(env_var, "").strip().lower()
+        if value.startswith(("socks://", "socks4://", "socks5://", "socks5h://")):
+            os.environ.pop(env_var, None)
+
+
 def interactive_setup():
     """交互式配置（OpenClaw 风格）"""
     print("\n💩 STOI 配置")
@@ -158,6 +176,8 @@ def get_openai_client(provider: Optional[str] = None):
         from openai import OpenAI
     except ImportError:
         raise ImportError("请安装 OpenAI SDK: pip install openai")
+
+    _sanitize_proxy_env_for_httpx()
 
     return OpenAI(
         api_key=selected["api_key"],

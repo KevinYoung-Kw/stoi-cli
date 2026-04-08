@@ -567,6 +567,7 @@ def main():
     parser.add_argument("--provider", "-p", help="指定模型提供商")
     parser.add_argument("--model", help="指定模型")
     parser.add_argument("--mode", choices=["tui", "web", "auto"], default="auto", help="GUI 模式 (tui/web/auto)")
+    parser.add_argument("--port", type=int, help="GUI 端口（仅 gui 命令）")
 
     args = parser.parse_args()
 
@@ -712,7 +713,7 @@ print(list(fib(10)))
             # 启动 Web GUI
             try:
                 from stoi_web_apple import main as web_main
-                web_main()
+                web_main(port=args.port)
             except ImportError:
                 print("❌ 请先安装 Flask: pip3 install flask")
                 sys.exit(1)
