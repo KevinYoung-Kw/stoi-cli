@@ -540,6 +540,7 @@ class DashboardScreen(Screen):
         Binding("r", "refresh_data", "刷新"),
         Binding("s", "speak_result", "播报"),
         Binding("b", "show_blame", "Blame"),
+        Binding("i", "show_insights", "AI洞察"),
         Binding("escape", "go_back", "返回"),
     ]
 
@@ -625,7 +626,7 @@ class DashboardScreen(Screen):
 
         yield Static(
             f"  💩 STOI  •  {agent_name}  •  {session_name[:40]}  "
-            f"[dim]按 R 刷新  S 播报  B Blame  Q 返回[/dim]",
+            f"[dim]R刷新  S播报  B:Blame  I:AI洞察  Q返回[/dim]",
             id="top-bar"
         )
 
@@ -673,6 +674,7 @@ class DashboardScreen(Screen):
 
         # L4: 用户反馈有效性标注
         self.records = analyze_session_validity(self.records)
+        self.app._last_records = self.records  # 供 InsightsScreen 使用
         self._update_display()
 
     def _update_display(self) -> None:
@@ -820,6 +822,9 @@ class DashboardScreen(Screen):
     def action_show_blame(self) -> None:
         self.app.push_screen(BlameScreen())
 
+    def action_show_insights(self) -> None:
+        self.app.push_screen(InsightsScreen())
+
     def action_go_back(self) -> None:
         self.app.pop_screen()
 
@@ -938,6 +943,108 @@ class BlameScreen(Screen):
         self.app.pop_screen()
 
 
+# ── 屏幕5：AI Insights ────────────────────────────────────────────────────────
+class InsightsScreen(Screen):
+
+    BINDINGS = [
+        Binding("q", "go_back", "返回"),
+        Binding("escape", "go_back", "返回"),
+    ]
+
+    CSS = """
+    InsightsScreen {
+        background: #0D0D0D;
+        align: center middle;
+    }
+    #insights-panel {
+        width: 90;
+        height: 38;
+        border: solid #FFB800;
+        background: #0A0A0A;
+        padding: 1 2;
+    }
+    #insights-title {
+        color: #FFB800;
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    #insights-content {
+        height: 1fr;
+        overflow-y: auto;
+        color: #E0E0E0;
+    }
+    #insights-footer {
+        color: #444444;
+        margin-top: 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="insights-panel"):
+            yield Label("💡 STOI AI Insights — 正在分析...", id="insights-title")
+            yield Rule()
+            yield Static("", id="insights-content")
+            yield Rule()
+            yield Label("[dim]按 Q 或 Esc 返回[/dim]", id="insights-footer")
+
+    def on_mount(self) -> None:
+        self._run_insights()
+
+    def _run_insights(self) -> None:
+        import threading
+        def run():
+            try:
+                from stoi_config import is_configured
+                from stoi_insights import run_insights, format_insights_data, call_llm, INSIGHTS_SYSTEM, INSIGHTS_PROMPT_TEMPLATE
+                from rich.console import Console
+                from io import StringIO
+
+                records = self.app.selected_session and self.app._last_records or []
+
+                if not records:
+                    self.call_from_thread(
+                        self.query_one("#insights-content", Static).update,
+                        "[yellow]无数据，请先选择一个 session[/yellow]"
+                    )
+                    return
+
+                if not is_configured():
+                    self.call_from_thread(
+                        self.query_one("#insights-content", Static).update,
+                        "[yellow]未配置 LLM，请先退出后运行 stoi config[/yellow]"
+                    )
+                    return
+
+                data = format_insights_data(records)
+                if not data:
+                    self.call_from_thread(
+                        self.query_one("#insights-content", Static).update,
+                        "[dim]数据不足，需要至少 3 个有效轮次[/dim]"
+                    )
+                    return
+
+                prompt = INSIGHTS_PROMPT_TEMPLATE.format(**data)
+                self.call_from_thread(
+                    self.query_one("#insights-title", Label).update,
+                    f"💡 STOI AI Insights — 均值 {data['avg_score']:.1f}%  {data['level']}"
+                )
+                result = call_llm(prompt, INSIGHTS_SYSTEM)
+                self.call_from_thread(
+                    self.query_one("#insights-content", Static).update,
+                    result
+                )
+            except Exception as e:
+                self.call_from_thread(
+                    self.query_one("#insights-content", Static).update,
+                    f"[red]错误: {e}[/red]\n\n[dim]检查 API Key 或运行 stoi config 重新配置[/dim]"
+                )
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def action_go_back(self) -> None:
+        self.app.pop_screen()
+
+
 # ── 主 App ────────────────────────────────────────────────────────────────────
 class STOIApp(App):
     """STOI — Shit Token On Investment"""
@@ -948,6 +1055,7 @@ class STOIApp(App):
     selected_agent: str = "claude_code"
     selected_session: Optional[dict] = None
     session_list: list = []
+    _last_records: list = []  # 最后一次分析的 records，供 InsightsScreen 使用
 
     def on_mount(self) -> None:
         self.push_screen(AgentSelectScreen())

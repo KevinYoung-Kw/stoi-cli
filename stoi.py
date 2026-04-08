@@ -54,6 +54,26 @@ COMMANDS = {
 }
 
 
+def _load_session_records(session: dict) -> list:
+    """统一的 session 加载入口，根据 agent 类型调用对应的 parser"""
+    agent = session.get("agent", "claude_code")
+    path  = session.get("path", "")
+
+    if agent == "claude_code":
+        from stoi_analyze import parse_claude_code_session
+        return parse_claude_code_session(path)
+    elif agent == "proxy":
+        from stoi_analyze import parse_proxy_log
+        return parse_proxy_log(path)
+    elif agent == "opencode":
+        from stoi_tui import parse_opencode_session
+        return parse_opencode_session(session.get("id", ""))
+    elif agent == "gemini":
+        from stoi_tui import parse_gemini_session
+        return parse_gemini_session(Path(path))
+    return []
+
+
 def print_logo():
     console.print(Text(STOI_LOGO, style="bold #FFB800"))
     console.print(
@@ -95,28 +115,14 @@ def load_log() -> list[dict]:
 # ── start ────────────────────────────────────────────────────────────────────
 def cmd_start():
     print_logo()
-    console.print("[bold #FFB800]▶ 启动 STOI 代理...[/bold #FFB800]\n")
-
     proxy_path = Path(__file__).parent / "stoi_proxy.py"
     if not proxy_path.exists():
-        # 尝试从 Hackathon 目录复制过来
-        src = Path("/Users/kevinyoung/.cola/outputs/STOI-Hackathon-路演-PPT/stoi_proxy.py")
-        if src.exists():
-            import shutil
-            shutil.copy(src, proxy_path)
-            console.print(f"[dim]已从 {src} 复制代理脚本[/dim]")
-
-    if proxy_path.exists():
-        console.print(
-            f"[green]✓ 代理脚本就绪[/green]: {proxy_path}\n"
-            "\n运行以下命令启动代理:\n"
-            f"  [bold white]python3 {proxy_path}[/bold white]\n"
-            "\n然后设置环境变量:\n"
-            "  [bold white]export ANTHROPIC_BASE_URL=http://localhost:8888[/bold white]\n"
-        )
-    else:
         console.print("[red]✗ 未找到 stoi_proxy.py[/red]")
-        console.print("[dim]请先将 stoi_proxy.py 放到当前目录[/dim]")
+        return
+    console.print("[bold #FFB800]▶ 启动 STOI 实时监控代理...[/bold #FFB800]")
+    console.print("[dim]自动切换 ANTHROPIC_BASE_URL，Ctrl+C 退出后自动恢复[/dim]\n")
+    import subprocess
+    subprocess.run([sys.executable, str(proxy_path)])
 
 
 # ── stats ────────────────────────────────────────────────────────────────────
@@ -286,32 +292,28 @@ def cmd_config():
 # ── insights ─────────────────────────────────────────────────────────────────
 def cmd_insights(args: list = None):
     print_logo()
-    from stoi_analyze import parse_claude_code_session, find_recent_sessions
+    from stoi_ui import interactive_select
     from stoi_engine import analyze_session_validity
     from stoi_insights import run_insights
 
     args = args or []
-    target = args[0] if args else None
 
-    if target:
-        path = Path(target)
-        if not path.exists():
-            console.print(f"[red]文件不存在: {target}[/red]")
-            return
-        records = parse_claude_code_session(str(path))
-        session_name = path.stem
+    # 如果直接传了路径就跳过交互
+    if args and Path(args[0]).exists():
+        from stoi_analyze import parse_claude_code_session
+        records = parse_claude_code_session(args[0])
+        session_name = Path(args[0]).stem
     else:
-        # 用最新 session
-        files = find_recent_sessions(1)
-        if not files:
-            console.print("[yellow]未找到 Claude Code session，请指定文件路径[/yellow]")
-            console.print("用法: stoi insights [session文件路径]")
+        # 交互式选择：Agent → Session → 确认
+        session = interactive_select(action="insights")
+        if not session:
             return
-        records = parse_claude_code_session(str(files[0]))
-        session_name = files[0].stem
+
+        records = _load_session_records(session)
+        session_name = session.get("name", "")
 
     if not records:
-        console.print("[yellow]session 文件为空或无法解析[/yellow]")
+        console.print("[yellow]⚠ 会话为空或无法解析[/yellow]")
         return
 
     records = analyze_session_validity(records)

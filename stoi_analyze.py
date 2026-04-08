@@ -153,6 +153,37 @@ def find_recent_sessions(top: int = 10) -> list[Path]:
     return all_files[:top]
 
 
+def parse_proxy_log(path: str) -> list[dict]:
+    """解析 STOI Proxy 生成的 JSONL 日志"""
+    from stoi_engine import calc_stoi
+    records = []
+    try:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                    usage = obj.get("usage", {})
+                    if not usage:
+                        continue
+                    stoi = calc_stoi(usage, turn_index=len(records))
+                    records.append({
+                        "ts":      obj.get("ts", ""),
+                        "model":   obj.get("model", ""),
+                        "session": "proxy",
+                        "stoi":    stoi,
+                        "usage":   usage,
+                        "source":  path,
+                    })
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return records
+
+
 def write_to_log(records: list[dict]):
     """写入到 ~/.stoi/sessions.jsonl"""
     if not records:
