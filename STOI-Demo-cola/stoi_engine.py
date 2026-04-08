@@ -268,20 +268,23 @@ def calc_stoi(usage: dict, turn_index: int = -1, session_turns: list = None) -> 
         }
 
     # ── 正式计算含屎量 ──────────────────────────────────────────────────────────
-    # 真正的含屎 = 本该命中缓存却没命中的 token
-    # 分母用 total_context（包含 cache_read），体现真实利用率
+    # 核心逻辑区分三种 token 角色：
+    #   cache_read  → 缓存命中（好，便宜 90%）
+    #   cache_creation → 写缓存投资（好，将来会被复用）
+    #   new_tokens  → 未命中且未投资（真正的浪费）
     cache_hit_rate = round(cache_read / total_context * 100, 1)
 
-    # 含屎量 = 未命中缓存 / 总上下文
-    # 但要扣除合理的"新增内容"（output_tokens 作为下轮的新 input 是正常的）
-    # 简单版：直接用 (total_context - cache_read) / total_context
-    # 即：未被缓存复用的部分占比
-    raw_shit = (total_context - cache_read) / total_context * 100
-
-    # 调节：如果 cache_creation 很大（说明在积极建缓存），降低惩罚
+    # 含屎量 = 真正浪费的 token / 总上下文
+    # 真正浪费 = new_tokens（既没命中缓存，也不是在建缓存）
+    # 但 cache_creation 是有目的的投资，不应算全量浪费
+    effective_waste = new_tokens
     if cache_creation > 0:
-        creation_ratio = cache_creation / total_context
-        raw_shit = raw_shit * (1 - creation_ratio * 0.5)  # 建缓存最多减半惩罚
+        # 如果有缓存投资，部分 new_tokens 是不可避免的上下文扩展
+        # 按投资比例降低惩罚（投资越多，容忍度越高）
+        investment_ratio = cache_creation / total_context
+        effective_waste = new_tokens * (1 - investment_ratio * 0.5)
+
+    raw_shit = effective_waste / total_context * 100
 
     stoi_score = round(min(raw_shit, 100.0), 1)
 
@@ -300,7 +303,7 @@ def calc_stoi(usage: dict, turn_index: int = -1, session_turns: list = None) -> 
         "cache_read":     cache_read,
         "cache_creation": cache_creation,
         "cache_hit_rate": cache_hit_rate,
-        "wasted_tokens":  total_context - cache_read,
+        "wasted_tokens":  new_tokens,  # true waste: uncached, non-investment tokens
         "is_baseline":    False,
         "note":           "",
     }
@@ -311,7 +314,7 @@ def calc_stoi_score(usage: dict, system_prompt: str = "") -> dict:
     全层 STOI 计算：
     L0 基础 cache miss 分数（主要权重 0.65）
     L1 语法废话惩罚（权重 0.15）
-    L3 缓存击穿惩罚（权重 0.35）
+    L3 缓存击穿惩罚（权重 0.20）
     最终 = L0 * 0.65 + L1_penalty * 0.15 + L3_penalty * 0.20
     Note: 这只在有 system_prompt 时才有 L1/L3，否则纯 L0。
     """

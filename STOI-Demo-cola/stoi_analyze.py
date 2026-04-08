@@ -28,6 +28,7 @@ from stoi_engine import (
     SHIT_THRESHOLDS, SHIT_EMOJI,
     get_score_color, get_level_display, TTS_MESSAGES,
 )
+from stoi_metrics import analyze_output, StepParser, QualityScorer, MetricsCalculator
 
 CLAUDE_PROJECTS = Path("~/.claude/projects").expanduser()
 LOG_FILE = Path("~/.stoi/sessions.jsonl").expanduser()
@@ -204,6 +205,18 @@ def print_session_report(records: list[dict], source_path: str = ""):
     table.add_row("缓存命中",     f"[green]{total_cache:,}[/green]", "复用的部分")
     table.add_row("白白浪费",     f"[red]{total_wasted:,}[/red]", "没命中缓存的")
     table.add_row("输出 tokens",  f"{total_output:,}", "实际产出")
+
+    # ── 新增：量化指标摘要 ──────────────────────────────────────────────────
+    # Token 效率比 (输出/浪费，越高越好)
+    efficiency_ratio = round(total_output / total_wasted, 2) if total_wasted > 0 else float('inf')
+    table.add_row(
+        "Token 效率比",
+        f"[cyan]{efficiency_ratio}[/cyan]" if efficiency_ratio < 100 else "[green]∞[/green]",
+        "输出/浪费，越高越好",
+    )
+    # 有效输出占比
+    useful_ratio = round(total_output / (total_input + total_output) * 100, 1) if (total_input + total_output) > 0 else 0
+    table.add_row("有效输出占比", f"[cyan]{useful_ratio}%[/cyan]", "输出/(输入+输出)")
 
     console.print(table)
 

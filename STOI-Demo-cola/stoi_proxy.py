@@ -47,18 +47,25 @@ TTS_MESSAGES = {
 # ── 含屎量计算 ─────────────────────────────────────────────────────────────────
 def calc_stoi(usage: dict) -> dict:
     """
-    STOI = 1 - (cache_read / input_tokens)
-    越低越好，越高说明缓存命中越差，越「屎」
+    STOI v2 — 区分 cache_read（好）、cache_creation（投资）、new_tokens（浪费）
+    含屎量 = 真正浪费 / 总上下文
     """
     input_tokens        = usage.get("input_tokens", 0)
     cache_read          = usage.get("cache_read_input_tokens", 0)
     cache_creation      = usage.get("cache_creation_input_tokens", 0)
     output_tokens       = usage.get("output_tokens", 0)
+    total_context       = input_tokens + cache_read + cache_creation
 
-    if input_tokens == 0:
+    if total_context == 0:
         stoi_score = 0.0
     else:
-        stoi_score = round((1 - cache_read / input_tokens) * 100, 1)
+        # 真正浪费 = input_tokens（非缓存命中、非缓存投资）
+        # 但如果有 cache_creation，部分 new_tokens 是合理投资
+        effective_waste = input_tokens
+        if cache_creation > 0:
+            investment_ratio = cache_creation / total_context
+            effective_waste = input_tokens * (1 - investment_ratio * 0.5)
+        stoi_score = round(effective_waste / total_context * 100, 1)
 
     level = "CLEAN"
     for lvl, (lo, hi) in SHIT_THRESHOLDS.items():
@@ -69,11 +76,11 @@ def calc_stoi(usage: dict) -> dict:
     return {
         "stoi_score":     stoi_score,
         "level":          level,
-        "input_tokens":   input_tokens,
+        "input_tokens":   total_context,
         "output_tokens":  output_tokens,
         "cache_read":     cache_read,
         "cache_creation": cache_creation,
-        "wasted_tokens":  input_tokens - cache_read,
+        "wasted_tokens":  input_tokens,  # true waste: uncached, non-investment tokens
     }
 
 
