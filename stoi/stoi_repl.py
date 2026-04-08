@@ -48,6 +48,7 @@ COMMANDS = {
     "/insights":  ("AI 深度建议",                        "LLM + 知识库，需 API key"),
     "/sessions":  ("切换 session",                       "claude / opencode / gemini"),
     "/overview":  ("全局效率报告",                        "所有历史 session 汇总"),
+    "/dashboard": ("生成可交互 HTML 分析面板",            "浏览器打开，按需 LLM 分析"),
     "/blame":     ("定位 Cache Miss 元凶",                "扫描 System Prompt"),
     "/dashboard": ("可视化 Dashboard + LLM 分析",         "浏览器打开，按轮次分析"),
     "/setup":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
@@ -225,6 +226,9 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/overview":
         _run_overview()
+
+    elif cmd == "/dashboard":
+        _run_dashboard()
 
     elif cmd == "/setup":
         _run_setup()
@@ -670,6 +674,32 @@ def _run_overview():
             console.print(f"  {iss}")
     else:
         console.print("  [green]✅ 整体使用模式健康[/green]")
+    console.print()
+
+
+def _run_dashboard():
+    """生成可交互的 HTML 分析面板，按需 LLM 分析每轮"""
+    from .stoi_chain import parse_chain, analyze_chain
+    from .stoi_dashboard import generate_dashboard
+    import subprocess
+
+    session_path = state.current_session
+    if not session_path or not Path(session_path).exists():
+        console.print("  [yellow]请先用 /sessions 选择一个 session[/yellow]")
+        return
+
+    console.print()
+    with console.status("[dim]解析链条并生成 dashboard...[/dim]", spinner="dots"):
+        turns = parse_chain(Path(session_path), max_turns=50)
+        if not turns:
+            console.print("  [yellow]session 为空或无法解析[/yellow]")
+            return
+        analysis = analyze_chain(turns, Path(session_path).name[:30])
+        html_path = generate_dashboard(analysis, Path(session_path))
+
+    console.print(f"  [green]✅ Dashboard 已生成[/green]: {html_path}")
+    console.print(f"  [dim]{len(turns)} 轮对话，点击 [🔍 分析] 按钮即可触发 LLM 分析[/dim]")
+    subprocess.Popen(["open", str(html_path)])
     console.print()
 
 
