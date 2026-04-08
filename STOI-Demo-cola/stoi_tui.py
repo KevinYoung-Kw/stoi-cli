@@ -370,7 +370,7 @@ class AgentSelectScreen(Screen):
                 yield RadioButton("🔷  Gemini CLI   (~/.gemini/history/)", id="gemini")
                 yield RadioButton("🔌  STOI Proxy   (~/.stoi/sessions.jsonl)", id="proxy")
             yield Button("→ 选择会话", id="confirm-btn", variant="primary")
-            yield Label("↑↓ 移动  Enter 确认  Q 退出", classes="hint")
+            yield Label("↑↓ 移动  Space 选中  Enter 确认  Q 退出", classes="hint")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "confirm-btn":
@@ -381,6 +381,19 @@ class AgentSelectScreen(Screen):
 
     def action_select(self) -> None:
         """Enter key triggers confirm button"""
+        self._go_next()
+
+    def on_key(self, event) -> None:
+        """捕获按键，空格/回车都触发跳转（RadioButton 会消费 Enter，用 Space 也行）"""
+        if event.key in ("enter", "space") and not isinstance(self.focused, Button):
+            # 如果焦点不在 Button 上，空格/回车跳转
+            pass  # RadioButton 处理选中；Button 处理跳转
+        if event.key == "enter":
+            # 无论焦点在哪，Enter 总是跳转（RadioButton 用 Space 选中）
+            self._go_next()
+            event.stop()
+
+    def _go_next(self) -> None:
         radio_set = self.query_one('#agent-radio', RadioSet)
         selected = str(radio_set.pressed_button.id) if radio_set.pressed_button else 'claude_code'
         self.app.selected_agent = selected
