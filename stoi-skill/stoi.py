@@ -581,7 +581,7 @@ def main():
     client = None
     model = None
 
-    if args.command not in ["tts", "init", "demo", "sessions"]:
+    if args.command not in ["tts", "init", "demo", "sessions", "config"]:
         try:
             client, model = get_openai_client(args.provider)
         except ValueError as e:
@@ -590,6 +590,29 @@ def main():
         except ImportError as e:
             print(f"❌ {e}")
             sys.exit(1)
+
+    if args.command == "config":
+        # 交互式配置
+        from config import interactive_setup, get_available_providers, PROVIDERS
+        import os
+
+        print("\n💩 STOI 配置检查")
+        print("=" * 40)
+
+        available = get_available_providers()
+        print("\n当前配置状态:\n")
+
+        for pid, config in PROVIDERS.items():
+            env_var = config['env_var']
+            value = os.getenv(env_var)
+            status = "✅ 已配置" if value else "❌ 未配置"
+            print(f"  {status} {config['name']}")
+            print(f"     环境变量: {env_var}")
+            print()
+
+        print("=" * 40)
+        interactive_setup()
+        return
 
     if args.command == "init":
         from config import get_available_providers
@@ -600,10 +623,11 @@ def main():
         if providers:
             print(f"\n✓ 检测到 {len(providers)} 个已配置的提供商:")
             for pid, p in providers.items():
-                print(f"  • {p['name']} ({p['default_model']})")
+                print(f"  • {p['name']} ({p['model']})")
         else:
             print("\n⚠️ 未检测到 API Key")
             print("请设置环境变量: export DASHSCOPE_API_KEY=your_key")
+            print("或运行: stoi config")
 
     elif args.command == "demo":
         # 创建演示数据
