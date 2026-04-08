@@ -90,6 +90,22 @@ def _fmt_dollars(v: float) -> str:
     return f"${v:.4f}"
 
 
+def _shit_emoji_meter(score: float) -> str:
+    if score > 90:
+        count = 5
+    elif score > 70:
+        count = 4
+    elif score > 50:
+        count = 3
+    elif score > 40:
+        count = 2
+    elif score > 30:
+        count = 1
+    else:
+        count = 0
+    return " ".join(["💩"] * count)
+
+
 def _rule_based_suggestions(report: STOIReport) -> list[str]:
     """Fallback suggestions when LLM is not available."""
     s: list[str] = []
@@ -113,7 +129,7 @@ def _rule_based_suggestions(report: STOIReport) -> list[str]:
 
 def render_cli(report: STOIReport) -> None:
     """Print a rich terminal STOI report to stdout."""
-    console = Console(width=80, highlight=False)
+    console = Console(width=96, highlight=False)
 
     # ── Header box ────────────────────────────────────────────────────────────
     date_str = report.generated_at[:10] if report.generated_at else datetime.now().strftime("%Y-%m-%d")
@@ -135,26 +151,30 @@ def render_cli(report: STOIReport) -> None:
     overview.add_column(width=10, no_wrap=True)
     overview.add_column(width=7, no_wrap=True, justify="right")
     overview.add_column(width=18, no_wrap=True)
-    overview.add_column(width=20, no_wrap=True)
+    overview.add_column(width=18, no_wrap=True)
+    overview.add_column(width=16, no_wrap=True)
 
     score_col = f"[{_score_color(report.avg_stoi_score)}]{report.avg_stoi_score:.1f}%[/{_score_color(report.avg_stoi_score)}]"
     hit_col   = f"[{GREEN if hit_pct >= 70 else YELLOW if hit_pct >= 40 else RED}]{hit_pct:.1f}%[/{GREEN if hit_pct >= 70 else YELLOW if hit_pct >= 40 else RED}]"
     eff_col   = f"[{GREEN if eff_pct >= 70 else YELLOW if eff_pct >= 40 else RED}]{eff_pct:.1f}%[/{GREEN if eff_pct >= 70 else YELLOW if eff_pct >= 40 else RED}]"
+    stoi_meter = _shit_emoji_meter(report.avg_stoi_score)
+    stoi_bar = _bar(report.avg_stoi_score, 100, 18, invert=False)
 
-    overview.add_row("  含屎量",    score_col, stoi_label,                 _bar(report.avg_stoi_score, 100, 20, invert=False))
-    overview.add_row("  缓存命中",  hit_col,   "",                         _bar(hit_pct, 100, 20, invert=True))
+    overview.add_row("  含屎量",    score_col, stoi_label,                 stoi_bar, stoi_meter)
+    overview.add_row("  缓存命中",  hit_col,   "",                         _bar(hit_pct, 100, 18, invert=True), "")
     # 有效输出率：Claude Code session 内容不可读，显示提示而非误导性数字
     if eff_pct == 0.0 and report.source_tool == "claude_code":
-        overview.add_row("  有效输出", "[dim]N/A[/dim]", "[dim](Claude Code 内容不可读)[/dim]", "")
+        overview.add_row("  有效输出", "[dim]N/A[/dim]", "[dim](Claude Code 内容不可读)[/dim]", "", "")
     else:
-        overview.add_row("  有效输出",  eff_col, f"[dim]({report.valid_turns} scored turns)[/dim]", _bar(eff_pct, 100, 20, invert=True))
-    overview.add_row("  实际花费",  _fmt_dollars(report.total_cost_actual), "", "")
-    overview.add_row("  节省费用",  f"[{GREEN}]{_fmt_dollars(report.total_cost_saved)}[/{GREEN}]", "[dim](via cache)[/dim]", "")
+        overview.add_row("  有效输出",  eff_col,   f"[dim]({report.valid_turns} scored turns)[/dim]", _bar(eff_pct, 100, 18, invert=True), "")
+    overview.add_row("  实际花费",  _fmt_dollars(report.total_cost_actual), "", "", "")
+    overview.add_row("  节省费用",  f"[{GREEN}]{_fmt_dollars(report.total_cost_saved)}[/{GREEN}]", "[dim](via cache)[/dim]", "", "")
     if report.waste_cost > 0:
         overview.add_row(
             "  无效花费",
             f"[{RED}]{_fmt_dollars(report.waste_cost)}[/{RED}]",
             "[dim](invalid outputs)[/dim]",
+            "",
             "",
         )
     console.print(overview)

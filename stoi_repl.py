@@ -7,6 +7,7 @@ stoi_repl.py — STOI 交互式 REPL 主界面
 import os
 import sys
 import subprocess
+import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -97,6 +98,68 @@ class REPLState:
 
 state = REPLState()
 
+ZH_DIGITS = "零一二三四五六七八九"
+
+
+def _speak_integer_zh(num: int) -> str:
+    if num == 0:
+        return ZH_DIGITS[0]
+
+    parts = []
+    zero_pending = False
+    remain = num
+    for value, unit in ((100, "百"), (10, "十"), (1, "")):
+        digit, remain = divmod(remain, value)
+        if digit == 0:
+            if parts and remain > 0:
+                zero_pending = True
+            continue
+        if zero_pending:
+            parts.append(ZH_DIGITS[0])
+            zero_pending = False
+        if value == 10 and digit == 1 and not parts:
+            parts.append(unit)
+        else:
+            parts.append(f"{ZH_DIGITS[digit]}{unit}")
+    return "".join(parts)
+
+
+def _speak_percent_zh(score: float) -> str:
+    normalized = f"{round(score, 1):.1f}"
+    integer_str, decimal_str = normalized.split(".")
+    spoken = _speak_integer_zh(int(integer_str))
+    if decimal_str != "0":
+        spoken += "点" + "".join(ZH_DIGITS[int(ch)] for ch in decimal_str)
+    return spoken
+
+
+def _broadcast_stoi_score(score: float) -> None:
+    from stoi_config import load_config
+
+    cfg = load_config()
+    tts_cfg = cfg.get("tts", {})
+    if not tts_cfg.get("enabled", True):
+        return
+
+    say_bin = shutil.which("say")
+    if not say_bin:
+        return
+
+    voice = tts_cfg.get("voice") or "Ting-Ting"
+    message = f"含屎量百分之{_speak_percent_zh(score)}"
+    cmd = [say_bin, message]
+    if voice:
+        cmd = [say_bin, "-v", voice, message]
+
+    try:
+        subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
 
 # ── 启动界面 ──────────────────────────────────────────────────────────────────
 def print_welcome():
@@ -149,13 +212,13 @@ def handle_command(cmd: str) -> bool:
         if not state.current_session:
             console.print("  [yellow]请先用 /sessions 选择一个 session[/yellow]")
             return True
-        _run_report(llm=False)
+        _run_report(llm=False, speak_summary=True)
 
     elif cmd == "/insights":
         if not state.current_session:
             console.print("  [yellow]请先用 /sessions 选择一个 session[/yellow]")
             return True
-        _run_report(llm=True)
+        _run_report(llm=True, speak_summary=False)
 
     elif cmd.startswith("/sessions"):
         parts = cmd.split()
@@ -191,7 +254,7 @@ def handle_command(cmd: str) -> bool:
     return True
 
 
-def _run_report(llm: bool = False):
+def _run_report(llm: bool = False, speak_summary: bool = False):
     from stoi_core import analyze
     from stoi_report import render_cli
 
@@ -208,6 +271,8 @@ def _run_report(llm: bool = False):
         return
 
     render_cli(report)
+    if speak_summary:
+        _broadcast_stoi_score(report.avg_stoi_score)
 
     if llm and report.llm_suggestions:
         console.print()
