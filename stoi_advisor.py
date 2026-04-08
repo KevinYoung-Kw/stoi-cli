@@ -117,13 +117,19 @@ def _build_analysis_summary(report) -> str:
 **检测到的问题**
 {issues}
 
-请根据以上数据，使用 search_knowledge 工具查询相关知识，然后给出 3 条具体、可立即执行的改进建议。
+**用户场景**：这是一个 Claude Code 用户（AI 编程工具），不是在做 RAG 应用或构建 LLM 产品。
+建议必须针对 Claude Code 的实际使用场景，例如：
+- 如何配置 CLAUDE.md 减少冗余
+- 何时使用 /compact 压缩对话历史
+- 如何拆分长任务为多个独立 session
+- 哪些内容不应该出现在 System Prompt 里
 
-建议格式（每条）：
-**[问题类型]**
-根因：XXX
-操作：具体步骤（1-2句）
-收益：预期节省 XX tokens 或 $X.XX"""
+请用 search_knowledge 查询相关知识（优先查 claude_code_skills，再查其他），然后给出 3 条针对 Claude Code 用户的具体建议。
+
+建议格式（每条，不超过 5 行）：
+**[问题]** 一句话描述问题
+**操作** 具体怎么做（Claude Code 命令或配置，不是通用建议）
+**收益** 预期节省多少"""
 
 
 def get_suggestions(report, verbose: bool = False) -> list[str]:
@@ -145,12 +151,18 @@ def get_suggestions(report, verbose: bool = False) -> list[str]:
 
         summary = _build_analysis_summary(report)
 
-        SYSTEM = """你是 STOI Token 效率分析引擎。你的任务是：
-1. 分析用户提供的 STOI 数据
-2. 根据数据特征，使用 search_knowledge 工具查询相关知识（可查询1-3次）
-3. 结合数据和知识，给出精准的改进建议
+        SYSTEM = """你是 STOI（Shit Token On Investment）Token 效率分析引擎，专门帮助 Claude Code 用户优化 AI 编程工具的 token 消耗。
 
-重要：只查询与当前数据问题相关的知识。如果含屎量很低，不要无谓地查 cache 优化。"""
+你的任务：
+1. 分析 STOI 数据，判断主要问题在哪里
+2. 用 search_knowledge 工具查询知识库（优先查 claude_code_skills）
+3. 给出 3 条针对 Claude Code 实际使用场景的具体建议
+
+原则：
+- 建议必须是 Claude Code 用户能直接执行的（如"/compact 命令"、"修改 CLAUDE.md"、"拆分 session"）
+- 不要给"用向量数据库"、"引入 RAG"这种与 Claude Code 无关的建议
+- 如果数据显示某个指标很健康（如含屎量 < 10%），直接说"该指标良好"，不要无谓建议
+- 建议要简洁，每条不超过 5 行"""
 
         messages = [{"role": "user", "content": summary}]
 

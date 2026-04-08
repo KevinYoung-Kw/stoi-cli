@@ -20,7 +20,13 @@ from rich import box
 
 console = Console(highlight=False)
 
-LOGO_SMALL = "💩"
+LOGO = r"""
+ ███████╗████████╗ ██████╗ ██╗
+ ██╔════╝╚══██╔══╝██╔═══██╗██║
+ ███████╗   ██║   ██║   ██║██║
+ ╚════██║   ██║   ██║   ██║██║
+ ███████║   ██║   ╚██████╔╝██║
+ ╚══════╝   ╚═╝    ╚═════╝ ╚═╝"""
 
 COMMANDS = {
     "/report":    ("分析当前 session 的含屎量",          "快速，不调用 LLM"),
@@ -79,10 +85,11 @@ state = REPLState()
 # ── 启动界面 ──────────────────────────────────────────────────────────────────
 def print_welcome():
     console.clear()
-    console.print()
-    # Logo 行
-    console.print(f"  {LOGO_SMALL}  [bold white]STOI[/bold white]  [dim]v2.0[/dim]   "
-                  f"[dim]{state.status_line}[/dim]")
+    console.print(Text(LOGO, style="bold #FFB800"))
+    console.print(
+        f"  [bold white]Shit Token On Investment[/bold white]  [dim]v2.0[/dim]   "
+        f"[dim]{state.status_line}[/dim]"
+    )
     console.print()
     console.print("  [dim]/ for commands · ? for shortcuts · Ctrl+D to exit[/dim]")
     console.print()
@@ -177,14 +184,10 @@ def _run_report(llm: bool = False):
 
     if llm and report.llm_suggestions:
         console.print()
-        console.print("  [bold #FFB800]💡 AI 改进建议[/bold #FFB800]  [dim](来自知识库)[/dim]")
+        console.print("  [bold #FFB800]💡 AI 改进建议[/bold #FFB800]  [dim](基于知识库)[/dim]")
         console.print()
         for s in report.llm_suggestions:
-            # 清理 markdown 格式，终端友好输出
-            clean = s.replace("**", "").replace("*", "")
-            for line in clean.strip().splitlines():
-                if line.strip():
-                    console.print(f"  {line}")
+            _render_suggestion(s)
         console.print()
 
 
@@ -320,6 +323,48 @@ def _show_session_mini_list(files):
         marker = "[green]●[/green]" if state.current_session == f else " "
         console.print(f"  {marker}[bold]{i}[/bold]  [dim]{mtime}[/dim]  {name}")
     console.print()
+
+
+def _render_suggestion(text: str):
+    """把 LLM 返回的 markdown 渲染成终端友好格式"""
+    import re
+    lines = text.strip().splitlines()
+    suggestion_num = 0
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        # ### 标题 → 黄色标题
+        if line.startswith("###"):
+            title = line.lstrip("#").strip()
+            console.print(f"\n  [bold #FFB800]▸ {title}[/bold #FFB800]")
+        # **粗体内容** → 白色加粗
+        elif line.startswith("**") and line.endswith("**"):
+            content = line.strip("*")
+            console.print(f"  [bold white]{content}[/bold white]")
+        # **标签**: 内容 → 标签加粗
+        elif re.match(r'^\*\*[^*]+\*\*[:：]', line):
+            parts = re.split(r'\*\*[:：]\s*', line.replace("**", ""), 1)
+            label = re.sub(r'^\*\*', '', line.split("**")[1])
+            rest = line.split("**:", 1)[-1].strip() if "**:" in line else line.split("**：", 1)[-1].strip()
+            console.print(f"  [bold #FFB800]{label}[/bold #FFB800]  {rest}")
+        # - 列表 → 缩进
+        elif line.startswith("- ") or line.startswith("* "):
+            content = line[2:]
+            # 去掉行内 **
+            content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)
+            console.print(f"    [dim]·[/dim] {content}")
+        # 数字列表
+        elif re.match(r'^\d+\.', line):
+            content = re.sub(r'^\d+\.\s*', '', line)
+            content = re.sub(r'\*\*([^*]+)\*\*', r'\1', content)
+            console.print(f"    {content}")
+        # 普通行
+        else:
+            clean = re.sub(r'\*\*([^*]+)\*\*', r'\1', line)
+            clean = re.sub(r'\*([^*]+)\*', r'\1', clean)
+            if clean:
+                console.print(f"  {clean}")
 
 
 def _run_blame():
