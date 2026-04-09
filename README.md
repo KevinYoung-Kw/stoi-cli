@@ -170,7 +170,7 @@ claude mcp add stoi stoi
 
 > 如果环境找不到 `stoi`，可用 `claude mcp add stoi -- python3 -m stoi`
 >
-> 也可以直接在 REPL 中输入 `/setup`，它会自动帮你完成配置。
+> 也可以直接在 REPL 中输入 `/mcp`，它会自动帮你完成配置。
 
 注册成功后，在 Claude Code 里直接说：
 
