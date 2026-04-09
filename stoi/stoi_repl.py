@@ -1048,11 +1048,17 @@ def run():
         # macOS uses libedit - needs different binding
         if 'libedit' in readline.__doc__ or readline.__doc__ is None:
             readline.parse_and_bind("bind ^I rl_complete")
-            # Arrow keys for libedit
-            readline.parse_and_bind("bind '\\e[A' ed-search-prev")
-            readline.parse_and_bind("bind '\\e[B' ed-search-next")
-            readline.parse_and_bind("bind '\\e[C' em-forward-char")
-            readline.parse_and_bind("bind '\\e[D' em-backward-char")
+            # Arrow keys for libedit (suppress stderr since libedit prints errors directly)
+            import sys, os
+            _old_stderr = sys.stderr
+            try:
+                sys.stderr = open(os.devnull, "w")
+                readline.parse_and_bind("bind '\e[A' ed-prev-line")
+                readline.parse_and_bind("bind '\e[B' ed-next-line")
+                readline.parse_and_bind("bind '\e[C' ed-next-char")
+                readline.parse_and_bind("bind '\e[D' ed-prev-char")
+            finally:
+                sys.stderr = _old_stderr
         else:
             readline.parse_and_bind("tab: complete")
             # Arrow keys for GNU readline

@@ -67,6 +67,11 @@ body {
 a { color: inherit; text-decoration: none; }
 img { max-width: 100%; display: block; }
 
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ── Utilities ───────────────────────────────────────────────────────────── */
 .muted { color: var(--text-muted); }
 .accent { color: var(--accent); }
@@ -347,11 +352,15 @@ img { max-width: 100%; display: block; }
 #content-root {
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 #content-root.is-exiting {
   opacity: 0;
   transform: translateY(8px);
+}
+#content-root.is-entering {
+  opacity: 0;
+  transform: translateY(-12px);
 }
 
 /* ── Typography ───────────────────────────────────────────────────────────── */
@@ -1066,6 +1075,7 @@ pre code {
   width: min(520px, 88vw);
   margin: 0 auto 2.5rem;
   perspective: 1200px;
+  overflow: hidden;
 }
 
 .hero-visual::before {
@@ -1662,8 +1672,39 @@ pre code {
   .bento .span-2 { grid-column: span 1; }
   .compare { grid-template-columns: 1fr; }
   .founder-card { padding: 1.15rem; }
-  .landing-hero { padding-top: calc(var(--nav-height) + 1rem); }
+  .landing-hero { padding: calc(var(--nav-height) + 1rem) 0.9rem 2.5rem; }
   .quote-mark { font-size: 5rem; margin-bottom: -1rem; }
   .layer-card { padding: 1.5rem; }
   .transform-card { padding: 1.5rem; }
+}
+
+@media (max-width: 480px) {
+  .landing-hero {
+    padding: calc(var(--nav-height) + 0.75rem) 0.75rem 2rem;
+  }
+  .hero-title-kinetic {
+    line-height: 0.98;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .reveal-delay-1,
+  .reveal-delay-2,
+  .reveal-delay-3,
+  .reveal-delay-4 {
+    transition-delay: 0s !important;
+  }
+  .hero-orb,
+  .scroll-arrow::after {
+    animation: none !important;
+  }
+  #content-root {
+    transition: none !important;
+  }
 }

@@ -76,83 +76,148 @@
           <h2>三分层效率模型</h2>
           <p>我们把一次 Claude Code 会话的效率，拆成三个可观测、可干预的维度。这个模型是 STOI 所有诊断和建议的基础。</p>
 
-          <h3>L1 Cache Efficiency（缓存效率）</h3>
-          <p>Anthropic 的 prompt caching 让前缀一致的请求只付 <strong>10%</strong> 的价格。这意味着：</p>
-          <ul>
-            <li>System Prompt 越稳定，命中率越高。</li>
-            <li>Tool result 里动态注入的时间戳、绝对路径、UUID，是 cache miss 的常见元凶。</li>
-            <li>第一轮建立缓存的成本不可避免，但从第二轮开始，每一次 miss 都是白花钱。</li>
-          </ul>
+          <div class="layers-grid docs-layers-grid">
+            <div class="layer-card">
+              <div class="layer-number">L1</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+              </div>
+              <h3>Cache Efficiency</h3>
+              <p>Anthropic 的 prompt caching 让前缀一致的请求只付 <strong>10%</strong> 的价格。System Prompt 越稳定，命中率越高；动态注入的时间戳、绝对路径、UUID 是 cache miss 的常见元凶。</p>
+            </div>
+            <div class="layer-card">
+              <div class="layer-number">L2</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+              </div>
+              <h3>Feedback Validity</h3>
+              <p>光是 cache 命中还不够——如果模型输出了长篇大论，用户却没有采纳，这些 token 也是事实上的浪费。STOI 用规则 + 可选 LLM 判断，来标注每一轮 assistant 输出的有效性。</p>
+            </div>
+            <div class="layer-card">
+              <div class="layer-number">L3</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+              <h3>Cost Breakdown</h3>
+              <p>把 cache 命中/未命中的价格差异、有效/无效输出的占比，换算成实际美元。让你看到的不是抽象的 token 数，而是真实的金钱燃烧速度。</p>
+            </div>
+          </div>
 
           <div class="callout">
             <p><strong>2025 关键规则：</strong>Anthropic 的缓存基于 <strong>精确前缀匹配（exact-prefix matching）</strong>。即使只改变一个字符（如时间戳从 14:32:15 变为 14:32:16），整个前缀缓存也会失效。动态内容必须放在 user message 中，不能放在 system prompt 或 tools 里。</p>
           </div>
 
-          <h3>L2 Feedback Validity（输出有效性）</h3>
-          <p>光是 cache 命中还不够——如果模型输出了长篇大论，用户却没有采纳（没有修改文件、没有执行建议、只是忽略了），这些 token 也是事实上的浪费。STOI 用规则 + 可选 LLM 判断，来标注每一轮 assistant 输出的有效性：</p>
-          <ul>
-            <li><strong>valid</strong>：用户明显采纳了输出（执行了命令、编辑了文件）。</li>
-            <li><strong>invalid</strong>：用户没有动作，或明确表达不满。</li>
-            <li><strong>partial</strong>：部分采纳，或需要进一步追问。</li>
-          </ul>
-
-          <h3>L3 Cost Breakdown（成本拆解）</h3>
-          <p>我们把 cache 命中/未命中的价格差异、有效/无效输出的占比，换算成实际美元。这让你看到的不是抽象的"token 数"，而是真实的金钱燃烧速度：</p>
-          <ul>
-            <li>实际花费 vs 没有缓存时的花费</li>
-            <li>无效输出造成的浪费金额</li>
-            <li>长 session 中 context 膨胀带来的边际成本</li>
-          </ul>
-
           <h2>含屎量等级</h2>
           <p>含屎量（STOI Score）越低越好。等级只是一个便于快速理解的标签。</p>
-          <table>
-            <thead>
-              <tr><th>等级</th><th>emoji</th><th>阈值</th><th>含义</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>CLEAN</td><td>✅</td><td>0% ~ 30%</td><td>缓存稳定，浪费可控。</td></tr>
-              <tr><td>MILD_SHIT</td><td>🟡</td><td>30% ~ 50%</td><td>有优化空间，关注一下动态字段。</td></tr>
-              <tr><td>SHIT_OVERFLOW</td><td>🟠</td><td>50% ~ 75%</td><td>大量 token 没命中缓存，需要排查 System Prompt。</td></tr>
-              <tr><td>DEEP_SHIT</td><td>💩</td><td>75% ~ 100%</td><td>成本黑洞，建议立即拆分 session 或重写 Prompt。</td></tr>
-            </tbody>
-          </table>
+
+          <div class="shit-scale">
+            <div class="shit-level clean">
+              <div class="shit-badge"><span class="shit-emoji">✅</span><span class="shit-name">CLEAN</span></div>
+              <div class="shit-range">0% ~ 30%</div>
+              <div class="shit-desc">缓存稳定，浪费可控。</div>
+            </div>
+            <div class="shit-level mild">
+              <div class="shit-badge"><span class="shit-emoji">🟡</span><span class="shit-name">MILD_SHIT</span></div>
+              <div class="shit-range">30% ~ 50%</div>
+              <div class="shit-desc">有优化空间，关注一下动态字段。</div>
+            </div>
+            <div class="shit-level overflow">
+              <div class="shit-badge"><span class="shit-emoji">🟠</span><span class="shit-name">SHIT_OVERFLOW</span></div>
+              <div class="shit-range">50% ~ 75%</div>
+              <div class="shit-desc">大量 token 没命中缓存，需要排查 System Prompt。</div>
+            </div>
+            <div class="shit-level deep">
+              <div class="shit-badge"><span class="shit-emoji">💩</span><span class="shit-name">DEEP_SHIT</span></div>
+              <div class="shit-range">75% ~ 100%</div>
+              <div class="shit-desc">成本黑洞，建议立即拆分 session 或重写 Prompt。</div>
+            </div>
+          </div>
 
           <h2>Context Engineering 核心原则</h2>
           <p>来自 STOI 知识库的关键洞察：LLM 的注意力分布不均匀，开头和结尾信息被充分利用，中间信息常被忽视（<strong>Lost in the Middle</strong> 现象）。即使 token 被付费了，被模型忽视的 token 就是浪费。</p>
 
-          <div class="bento bento-3">
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
-              <h4>中段迷失</h4>
-              <p>上下文超过 50K tokens 后质量明显下降。修复：重要信息最前置，历史做摘要而非全文追加。</p>
+          <div class="principles-grid">
+            <div class="principle-card" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></div>
+              <div class="principle-copy">
+                <h4>中段迷失</h4>
+                <p>上下文超过 50K tokens 后质量明显下降。<br><strong>修复：</strong>重要信息最前置，历史做摘要而非全文追加。</p>
+              </div>
+              <button class="principle-toggle" aria-label="展开详情">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="principle-detail">
+                <p>在超长上下文中，模型对中间部分的 recall 会显著降低。建议将最关键的系统规则放在 prompt 最前面，历史记录使用层级摘要而非全文保留。</p>
+              </div>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-              <h4>上下文膨胀</h4>
-              <p>4000+ token 的上下文中，30–40% 可被安全删除。修复：向量检索 top-k、逐层压缩、质量评分截断。</p>
+            <div class="principle-card" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+              <div class="principle-copy">
+                <h4>上下文膨胀</h4>
+                <p>4000+ token 的上下文中，30–40% 可被安全删除。<br><strong>修复：</strong>向量检索 top-k、逐层压缩、质量评分截断。</p>
+              </div>
+              <button class="principle-toggle" aria-label="展开详情">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="principle-detail">
+                <p>通过 RAG 替换全文检索、对工具结果做层级压缩（文件名 → 摘要 → 全文）、以及按质量评分截断历史记录，可以安全地削减 30% 以上的冗余上下文。</p>
+              </div>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
-              <h4>格式冗余</h4>
-              <p>未压缩的 JSON 比紧凑 JSON 多消耗 30–50% token。修复：系统提示去 Markdown，JSON minify。</p>
+            <div class="principle-card" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+              <div class="principle-copy">
+                <h4>格式冗余</h4>
+                <p>未压缩的 JSON 比紧凑 JSON 多消耗 30–50% token。<br><strong>修复：</strong>系统提示去 Markdown，JSON minify。</p>
+              </div>
+              <button class="principle-toggle" aria-label="展开详情">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="principle-detail">
+                <p>在系统提示中明确要求移除 Markdown 装饰、使用最紧凑的 JSON 输出，并避免多余的换行和缩进，能直接降低输入/输出层的 token 消耗。</p>
+              </div>
             </div>
           </div>
 
           <h2>STOI 四层浪费定位法</h2>
           <p>在链条分析（chain analysis）中，我们把一次对话里的 token 浪费拆成四个层级，逐层定位、逐层给出可执行建议。</p>
 
-          <h3>L1 输入层 — 精简工具调用的语法噪音</h3>
-          <p>JSON 里多余的缩进、Markdown 装饰符、无意义的换行都会被计入 token。可执行动作：要求 Claude 在工具调用中使用最小化 JSON，去掉不必要的格式字符。</p>
-
-          <h3>L2 结果层 — 压缩冗余的上下文返回</h3>
-          <p>重复的文件内容、过长的 grep 结果、大段未被引用的堆栈信息都会挤占上下文窗口。可执行动作：在 CLAUDE.md 中加入规则——"grep 结果超过 50 行时只返回文件名"。</p>
-
-          <h3>L3 结构层 — 消除破坏缓存的动态字段</h3>
-          <p>System Prompt 或 Tool result 中注入的时间戳、UUID、PID、绝对路径是导致 cache miss 的首要元凶。可执行动作：在 CLAUDE.md 中明确要求过滤掉这些动态内容，或将其移到 user message。</p>
-
-          <h3>L4 输出层 — 克制无意义的总结与重复</h3>
-          <p>Yapping、过度解释、已完成任务的冗余总结，都会增加输出长度且对用户无价值。可执行动作：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</p>
+          <div class="method-track">
+            <div class="method-step">
+              <div class="step-dot">L1</div>
+              <div class="step-content">
+                <h4>输入层</h4>
+                <p>精简工具调用的语法噪音。JSON 里多余的缩进、Markdown 装饰符、无意义的换行都会被计入 token。</p>
+                <div class="step-action">可执行动作：要求 Claude 在工具调用中使用最小化 JSON，去掉不必要的格式字符。</div>
+              </div>
+            </div>
+            <div class="method-connector"></div>
+            <div class="method-step">
+              <div class="step-dot">L2</div>
+              <div class="step-content">
+                <h4>结果层</h4>
+                <p>压缩冗余的上下文返回。重复的文件内容、过长的 grep 结果、大段未被引用的堆栈信息都会挤占上下文窗口。</p>
+                <div class="step-action">可执行动作：在 CLAUDE.md 中加入规则——"grep 结果超过 50 行时只返回文件名"。</div>
+              </div>
+            </div>
+            <div class="method-connector"></div>
+            <div class="method-step">
+              <div class="step-dot">L3</div>
+              <div class="step-content">
+                <h4>结构层</h4>
+                <p>消除破坏缓存的动态字段。System Prompt 或 Tool result 中注入的时间戳、UUID、PID、绝对路径是导致 cache miss 的首要元凶。</p>
+                <div class="step-action">可执行动作：在 CLAUDE.md 中明确要求过滤掉这些动态内容，或将其移到 user message。</div>
+              </div>
+            </div>
+            <div class="method-connector"></div>
+            <div class="method-step">
+              <div class="step-dot">L4</div>
+              <div class="step-content">
+                <h4>输出层</h4>
+                <p>克制无意义的总结与重复。Yapping、过度解释、已完成任务的冗余总结，都会增加输出长度且对用户无价值。</p>
+                <div class="step-action">可执行动作：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</div>
+              </div>
+            </div>
+          </div>
 
           <div class="cta-box">
             <h3>把理论变成行动</h3>
@@ -161,6 +226,14 @@
               <a class="btn btn-primary" href="./cli.html" data-pjax>查看安装与命令</a>
               <a class="btn btn-secondary" href="./index.html" data-pjax>回到首页</a>
             </div>
+          </div>
+
+          <div class="related-bar">
+            <span class="related-label">Related</span>
+            <a class="related-link" href="./cli.html" data-pjax>
+              <span>CLI 参考</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </a>
           </div>
         </div>
 

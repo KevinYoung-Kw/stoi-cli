@@ -71,6 +71,10 @@
     }
 
     root.classList.remove('is-exiting');
+    root.classList.add('is-entering');
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => root.classList.remove('is-entering'));
+    });
     initScrollReveal();
     initBurnCounter();
     initHeroParallax();
@@ -188,8 +192,7 @@
 
   function initThemeToggle() {
     const saved = localStorage.getItem('theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = saved || (prefersDark ? 'dark' : 'light');
+    const theme = saved || 'light';
     document.documentElement.setAttribute('data-theme', theme);
     setThemeIcon(theme);
 

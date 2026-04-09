@@ -73,19 +73,40 @@
           <h1>CLI 参考</h1>
           <p class="hero-lead" style="text-align:left;margin:0 0 2rem">一行命令安装，即刻开始审计你的 Token 效率。支持 uv、pipx 和普通 pip。</p>
 
-          <div class="install-box">
-            <h4>快速安装（推荐）</h4>
-            <pre><div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div><code>curl -fsSL https://raw.githubusercontent.com/KevinYoung-Kw/stoi-cli/main/install.sh | bash</code></pre>
-          </div>
-
-          <div class="install-box">
-            <h4>使用 uv（最快，自动管理 PATH）</h4>
-            <pre><div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div><code>uv tool install stoi-cli</code></pre>
-          </div>
-
-          <div class="install-box">
-            <h4>使用 pipx（自动将命令链接到 ~/.local/bin）</h4>
-            <pre><div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span></div><code>pipx install stoi-cli</code></pre>
+          <div class="install-steps">
+            <div class="install-step">
+              <div class="install-badge">
+                <span class="install-num">1</span>
+                <span class="install-tag">推荐</span>
+              </div>
+              <h4>快速安装</h4>
+              <div class="code-block copyable" data-copy="curl -fsSL https://raw.githubusercontent.com/KevinYoung-Kw/stoi-cli/main/install.sh | bash">
+                <div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span><button class="copy-btn" aria-label="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+                <code>curl -fsSL https://raw.githubusercontent.com/KevinYoung-Kw/stoi-cli/main/install.sh | bash</code>
+              </div>
+            </div>
+            <div class="install-step">
+              <div class="install-badge">
+                <span class="install-num">2</span>
+                <span class="install-tag uv">uv</span>
+              </div>
+              <h4>uv 安装（最快，自动管理 PATH）</h4>
+              <div class="code-block copyable" data-copy="uv tool install stoi-cli">
+                <div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span><button class="copy-btn" aria-label="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+                <code>uv tool install stoi-cli</code>
+              </div>
+            </div>
+            <div class="install-step">
+              <div class="install-badge">
+                <span class="install-num">3</span>
+                <span class="install-tag pipx">pipx</span>
+              </div>
+              <h4>pipx 安装（自动链接到 ~/.local/bin）</h4>
+              <div class="code-block copyable" data-copy="pipx install stoi-cli">
+                <div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span><button class="copy-btn" aria-label="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+                <code>pipx install stoi-cli</code>
+              </div>
+            </div>
           </div>
 
           <p>安装完成后，运行 <code>stoi help</code> 验证是否可用。如果提示 <code>command not found</code>，请把 <code>~/.local/bin</code> 加入 PATH 并重新加载终端配置。</p>
@@ -93,50 +114,91 @@
           <h2>CLI 命令速查</h2>
           <p>所有命令都可以通过 <code>stoi &lt;command&gt;</code> 直接调用，或进入交互式 REPL 后使用 <code>/&lt;command&gt;</code>。</p>
 
-          <table class="cheat-table">
-            <thead>
-              <tr><th>命令</th><th>作用</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>stoi report</td><td>分析最新 session，输出含屎量报告与缓存命中率。</td></tr>
-              <tr><td>stoi report --html</td><td>生成可交互的 HTML 报告并在浏览器打开。</td></tr>
-              <tr><td>stoi dashboard</td><td>启动深度分析面板，含对话链条与逐轮 LLM 解读。</td></tr>
-              <tr><td>stoi start</td><td>启动实时监控代理，在后台追踪当前会话的 token 效率。</td></tr>
-              <tr><td>stoi compare</td><td>选择两个 session 做 before/after 对比，直观展示优化效果。</td></tr>
-              <tr><td>stoi config</td><td>进入引导式配置，设置 API key、模型、语音播报等选项。</td></tr>
-              <tr><td>stoi help</td><td>显示所有可用命令的简要说明。</td></tr>
-            </tbody>
-          </table>
+          <div class="cmd-grid">
+            <div class="cmd-card">
+              <div class="cmd-name">stoi report</div>
+              <p>分析最新 session，输出含屎量报告与缓存命中率。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi report <span class="cmd-flag">--html</span></div>
+              <p>生成可交互的 HTML 报告并在浏览器打开。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi dashboard</div>
+              <p>启动深度分析面板，含对话链条与逐轮 LLM 解读。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi start</div>
+              <p>启动实时监控代理，在后台追踪当前会话的 token 效率。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi compare</div>
+              <p>选择两个 session 做 before/after 对比，直观展示优化效果。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi config</div>
+              <p>进入引导式配置，设置 API key、模型、语音播报等选项。</p>
+            </div>
+            <div class="cmd-card">
+              <div class="cmd-name">stoi help</div>
+              <p>显示所有可用命令的简要说明。</p>
+            </div>
+          </div>
 
           <h2>REPL 交互式命令</h2>
           <p>运行 <code>stoi</code>（不加参数）进入交互式 REPL。这是日常使用最频繁的模式，你可以在分析完一个 session 后立即切换到另一个，或实时查看全局统计。</p>
 
-          <table class="cheat-table">
-            <thead>
-              <tr><th>命令</th><th>作用</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>/report</td><td>当前 session 的含屎量分析与输出质量简报。</td></tr>
-              <tr><td>/dashboard</td><td>生成并打开 HTML 分析面板。</td></tr>
-              <tr><td>/blame</td><td>粘贴 System Prompt，定位可能造成 cache miss 的字段。</td></tr>
-              <tr><td>/mcp</td><td>一键配置 MCP，让 Claude Code 直接调用 STOI 工具。</td></tr>
-              <tr><td>/overview</td><td>全局效率报告，汇总所有历史 session 的 token 使用情况。</td></tr>
-              <tr><td>/sessions</td><td>切换要分析的 session（claude / opencode / gemini）。</td></tr>
-              <tr><td>/insights</td><td>基于 LLM 生成深度优化建议（需要配置 API key）。</td></tr>
-              <tr><td>Ctrl + D</td><td>退出 REPL。</td></tr>
-            </tbody>
-          </table>
+          <div class="cmd-grid">
+            <div class="cmd-card repl">
+              <div class="cmd-name">/report</div>
+              <p>当前 session 的含屎量分析与输出质量简报。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/dashboard</div>
+              <p>生成并打开 HTML 分析面板。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/blame</div>
+              <p>粘贴 System Prompt，定位可能造成 cache miss 的字段。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/mcp</div>
+              <p>一键配置 MCP，让 Claude Code 直接调用 STOI 工具。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/overview</div>
+              <p>全局效率报告，汇总所有历史 session 的 token 使用情况。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/sessions</div>
+              <p>切换要分析的 session（claude / opencode / gemini）。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">/insights</div>
+              <p>基于 LLM 生成深度优化建议（需要配置 API key）。</p>
+            </div>
+            <div class="cmd-card repl">
+              <div class="cmd-name">Ctrl + D</div>
+              <p>退出 REPL。</p>
+            </div>
+          </div>
 
-          <h2>MCP 集成</h2>
-          <p>STOI 同时也是一个 MCP Server。如果你把 stoi 接入 Claude Code，Claude 可以直接调用以下工具来分析自己的效率：</p>
-          <ul>
-            <li><code>stoi_latest</code> — 获取最近一次 session 的摘要</li>
-            <li><code>stoi_report</code> — 对指定 session 做完整分析</li>
-            <li><code>stoi_insights</code> — 返回基于知识库的深度建议</li>
-            <li><code>stoi_overview</code> — 全局 token 效率统计</li>
-            <li><code>stoi_blame</code> — 扫描 System Prompt 中的 cache-busting 模式</li>
-          </ul>
-          <p>在 REPL 中输入 <code>/mcp</code> 即可自动完成配置。</p>
+          <div class="mcp-spotlight">
+            <div class="mcp-icon">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            </div>
+            <div class="mcp-body">
+              <h3>MCP 集成</h3>
+              <p>STOI 同时也是一个 MCP Server。如果你把 stoi 接入 Claude Code，Claude 可以直接调用以下工具来分析自己的效率。在 REPL 中输入 <code>/mcp</code> 即可自动完成配置。</p>
+              <ul class="mcp-tools">
+                <li><code>stoi_latest</code> — 获取最近一次 session 的摘要</li>
+                <li><code>stoi_report</code> — 对指定 session 做完整分析</li>
+                <li><code>stoi_insights</code> — 返回基于知识库的深度建议</li>
+                <li><code>stoi_overview</code> — 全局 token 效率统计</li>
+                <li><code>stoi_blame</code> — 扫描 System Prompt 中的 cache-busting 模式</li>
+              </ul>
+            </div>
+          </div>
 
           <div class="cta-box">
             <h3>准备好开始了吗？</h3>
