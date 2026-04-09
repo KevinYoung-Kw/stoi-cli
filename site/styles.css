@@ -1,0 +1,423 @@
+/* ── CSS Variables ─────────────────────────────────────────────────────────── */
+:root {
+  --bg-main: #FDFCF8;
+  --bg-card: #FFFFFF;
+  --text-primary: #2C2C2C;
+  --text-secondary: #6E6E6E;
+  --accent: #FFB800;
+  --accent-soft: #FFF4D6;
+  --border: #E8E4DC;
+  --code-bg: #F5F3EF;
+  --shadow: 0 2px 8px rgba(0,0,0,0.04);
+  --shadow-hover: 0 6px 20px rgba(0,0,0,0.06);
+}
+
+/* ── Reset & Base ──────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-main);
+  color: var(--text-primary);
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* ── Typography ────────────────────────────────────────────────────────────── */
+h1, h2, h3, h4 {
+  margin: 0 0 0.6em;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 1em;
+}
+
+.handwritten {
+  font-family: "LXGW WenKai", "Ma Shan Zheng", cursive;
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────────── */
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ── Nav ───────────────────────────────────────────────────────────────────── */
+.site-nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(253, 252, 248, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.nav-inner {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nav-brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+}
+
+.nav-links {
+  display: flex;
+  gap: 28px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nav-links a {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.nav-links a:hover,
+.nav-links a[aria-current="page"] {
+  color: var(--text-primary);
+}
+
+.nav-toggle {
+  display: none;
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────────── */
+.hero {
+  padding: 100px 0 60px;
+  text-align: center;
+}
+
+.hero-title {
+  font-size: clamp(3rem, 8vw, 5rem);
+  font-weight: 700;
+  letter-spacing: -2px;
+  margin-bottom: 0.2em;
+}
+
+.hero-subtitle {
+  font-size: 1.15rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.6em;
+}
+
+.hero-tagline {
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  max-width: 520px;
+  margin: 0 auto 32px;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-block;
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  transition: transform 0.15s, box-shadow 0.2s;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #1A1A1A;
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+}
+
+.btn-group {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin: 48px 0 64px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  transition: box-shadow 0.2s, transform 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-2px);
+}
+
+.card-icon {
+  font-size: 1.4rem;
+  margin-bottom: 10px;
+}
+
+.card h3 {
+  font-size: 1.05rem;
+  margin-bottom: 0.4em;
+}
+
+.card p {
+  font-size: 0.92rem;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.65;
+}
+
+/* ── Content Section ───────────────────────────────────────────────────────── */
+.section {
+  padding: 48px 0;
+}
+
+.section-title {
+  font-size: 1.5rem;
+  margin-bottom: 0.4em;
+}
+
+.section-lead {
+  color: var(--text-secondary);
+  max-width: 600px;
+  margin-bottom: 32px;
+}
+
+/* ── Article / Docs ────────────────────────────────────────────────────────── */
+.article h2 {
+  font-size: 1.25rem;
+  margin-top: 40px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.article h3 {
+  font-size: 1.05rem;
+  margin-top: 28px;
+  color: var(--text-primary);
+}
+
+.article p,
+.article ul,
+.article ol {
+  color: var(--text-secondary);
+}
+
+.article ul,
+.article ol {
+  padding-left: 22px;
+}
+
+.article li {
+  margin-bottom: 0.4em;
+}
+
+/* ── Tables ────────────────────────────────────────────────────────────────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0 28px;
+  font-size: 0.92rem;
+}
+
+th, td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--code-bg);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* ── Code ───────────────────────────────────────────────────────────────────── */
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+}
+
+code {
+  background: var(--code-bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+pre {
+  background: var(--code-bg);
+  padding: 16px;
+  border-radius: 10px;
+  overflow-x: auto;
+  line-height: 1.55;
+  margin: 14px 0 24px;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* ── Install Box ───────────────────────────────────────────────────────────── */
+.install-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  margin: 18px 0 32px;
+  box-shadow: var(--shadow);
+}
+
+.install-box h4 {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+/* ── Cheat Sheet ───────────────────────────────────────────────────────────── */
+.cheat-table td:first-child {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.cheat-table td:last-child {
+  color: var(--text-secondary);
+}
+
+/* ── Footer ────────────────────────────────────────────────────────────────── */
+.site-footer {
+  border-top: 1px solid var(--border);
+  padding: 32px 0 40px;
+  margin-top: 40px;
+  text-align: center;
+}
+
+.footer-links {
+  display: flex;
+  gap: 22px;
+  justify-content: center;
+  margin-bottom: 14px;
+  font-size: 0.92rem;
+}
+
+.footer-links a {
+  color: var(--text-secondary);
+}
+
+.footer-links a:hover {
+  color: var(--text-primary);
+}
+
+.footer-copy {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.footer-zicha {
+  margin-top: 18px;
+  font-size: 0.8rem;
+  color: #A0A0A0;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .nav-links {
+    display: none;
+    position: absolute;
+    top: 56px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    background: var(--bg-main);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+  }
+
+  .nav-links.open {
+    display: flex;
+  }
+
+  .nav-links li {
+    text-align: center;
+  }
+
+  .nav-links a {
+    display: block;
+    padding: 10px 0;
+  }
+
+  .nav-toggle {
+    display: block;
+  }
+
+  .hero {
+    padding: 64px 0 40px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+    margin: 32px 0 48px;
+  }
+
+  .btn-group {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .btn {
+    width: 100%;
+    max-width: 260px;
+  }
+}

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STOI CLI 参考</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./index.html">STOI</a>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <ul class="nav-links">
+        <li><a href="./index.html">首页</a></li>
+        <li><a href="./docs.html">原理</a></li>
+        <li><a href="./cli.html" aria-current="page">CLI</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="container article">
+    <section class="section">
+      <h1 class="section-title">安装</h1>
+
+      <div class="install-box">
+        <h4>快速安装（推荐）</h4>
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/KevinYoung-Kw/stoi-cli/main/install.sh | bash</code></pre>
+      </div>
+
+      <div class="install-box">
+        <h4>使用 uv（最快，自动管理 PATH）</h4>
+        <pre><code>uv tool install stoi-cli</code></pre>
+      </div>
+
+      <p>安装完成后，运行 <code>stoi help</code> 验证是否可用。如果提示 <code>command not found</code>，请把 <code>~/.local/bin</code> 加入 PATH。</p>
+    </section>
+
+    <section class="section">
+      <h1 class="section-title">CLI 命令速查</h1>
+      <p class="section-lead">所有命令都可以通过 <code>stoi &lt;command&gt;</code> 直接调用，或进入交互式 REPL 后使用 <code>/&lt;command&gt;</code>。</p>
+
+      <table class="cheat-table">
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>stoi report</td>
+            <td>分析最新 session，输出含屎量报告与缓存命中率。</td>
+          </tr>
+          <tr>
+            <td>stoi report --html</td>
+            <td>生成可交互的 HTML 报告并在浏览器打开。</td>
+          </tr>
+          <tr>
+            <td>stoi dashboard</td>
+            <td>启动深度分析面板，含对话链条与逐轮 LLM 解读。</td>
+          </tr>
+          <tr>
+            <td>stoi start</td>
+            <td>启动实时监控代理，在后台追踪当前会话的 token 效率。</td>
+          </tr>
+          <tr>
+            <td>stoi compare</td>
+            <td>选择两个 session 做 before/after 对比，直观展示优化效果。</td>
+          </tr>
+          <tr>
+            <td>stoi config</td>
+            <td>进入引导式配置，设置 API key、模型、语音播报等选项。</td>
+          </tr>
+          <tr>
+            <td>stoi help</td>
+            <td>显示所有可用命令的简要说明。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h1 class="section-title">REPL 命令</h1>
+      <p class="section-lead">运行 <code>stoi</code>（不加参数）进入交互式 REPL，以下命令在 REPL 内使用。</p>
+
+      <table class="cheat-table">
+        <thead>
+          <tr>
+            <th>命令</th>
+            <th>作用</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>/report</td>
+            <td>当前 session 的含屎量分析与输出质量简报。</td>
+          </tr>
+          <tr>
+            <td>/dashboard</td>
+            <td>生成并打开 HTML 分析面板。</td>
+          </tr>
+          <tr>
+            <td>/blame</td>
+            <td>粘贴 System Prompt，定位可能造成 cache miss 的字段。</td>
+          </tr>
+          <tr>
+            <td>/mcp</td>
+            <td>一键配置 MCP，让 Claude Code 直接调用 STOI 工具。</td>
+          </tr>
+          <tr>
+            <td>/overview</td>
+            <td>全局效率报告，汇总所有历史 session 的 token 使用情况。</td>
+          </tr>
+          <tr>
+            <td>/sessions</td>
+            <td>切换要分析的 session（claude / opencode / gemini）。</td>
+          </tr>
+          <tr>
+            <td>/insights</td>
+            <td>基于 LLM 生成深度优化建议（需要配置 API key）。</td>
+          </tr>
+          <tr>
+            <td>Ctrl + D</td>
+            <td>退出 REPL。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+        <a href="./docs.html">文档</a>
+        <a href="./cli.html">CLI</a>
+      </div>
+      <p class="footer-copy">© 2025 stoi-cli</p>
+      <p class="footer-zicha handwritten">由于时间原因，这个 STOI 本身也是个 SHIT。</p>
+    </div>
+  </footer>
+
+  <script src="./nav.js"></script>
+</body>
+</html>

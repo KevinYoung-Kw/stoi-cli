@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STOI — Shit Token On Investment</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="./index.html">STOI</a>
+      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <ul class="nav-links">
+        <li><a href="./index.html" aria-current="page">首页</a></li>
+        <li><a href="./docs.html">原理</a></li>
+        <li><a href="./cli.html">CLI</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="container">
+    <section class="hero">
+      <h1 class="hero-title">STOI</h1>
+      <p class="hero-subtitle">Shit Token On Investment</p>
+      <p class="hero-tagline">一个测量工具，帮你看清 Claude Code 会话里有多少 token 白花了——以及具体该怎么省回来。</p>
+      <div class="btn-group">
+        <a class="btn btn-primary" href="./docs.html">阅读原理</a>
+        <a class="btn btn-secondary" href="./cli.html">查看 CLI</a>
+      </div>
+    </section>
+
+    <section class="cards">
+      <article class="card">
+        <div class="card-icon">&#128640;</div>
+        <h3>缓存决定成本</h3>
+        <p>前缀稳定性直接影响 KV Cache 命中率。命中一次，价格差十倍。</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">&#9989;</div>
+        <h3>有效才有价值</h3>
+        <p>输出再长，如果用户没采纳，就是无效输出。我们统计 Feedback，而不只看字数。</p>
+      </article>
+      <article class="card">
+        <div class="card-icon">&#128736;</div>
+        <h3>每条建议都可执行</h3>
+        <p>不输出含糊的"建议优化"，而是给出能直接写进 CLAUDE.md 的具体动作。</p>
+      </article>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+        <a href="./docs.html">文档</a>
+        <a href="./cli.html">CLI</a>
+      </div>
+      <p class="footer-copy">© 2025 stoi-cli</p>
+      <p class="footer-zicha handwritten">由于时间原因，这个 STOI 本身也是个 SHIT。</p>
+    </div>
+  </footer>
+
+  <script src="./nav.js"></script>
+</body>
+</html>
