@@ -26,6 +26,10 @@ from stoi_metrics import (
     MetricsResult,
     analyze_output,
 )
+from stoi_analyze import (
+    compute_step_metrics,
+    aggregate_step_metrics,
+)
 
 
 # ── StepParser ───────────────────────────────────────────────────────────────
@@ -442,3 +446,221 @@ class TestAnalyzeOutput:
         assert len(result.steps) == 5
         assert result.total_reasoning_tokens > 0
         assert result.monitorability_gain > 0
+
+
+# ── Integration: compute_step_metrics ────────────────────────────────────────
+
+class TestComputeStepMetrics:
+    def test_records_with_output_text(self):
+        records = [
+            {
+                "ts": "2026-01-01",
+                "output_text": (
+                    "<trace>\nStep 1: Based on [Doc#1], the data shows 100 users.\n"
+                    "Step 2: Therefore the result is 50%.\n</trace>\n<answer>50%</answer>"
+                ),
+                "stoi": {"stoi_score": 30.0},
+            },
+        ]
+        result = compute_step_metrics(records)
+        assert result[0]["step_metrics"] is not None
+        assert result[0]["step_metrics"].composite_quality > 0
+
+    def test_short_text_skipped(self):
+        records = [
+            {"ts": "2026-01-01", "output_text": "short", "stoi": {"stoi_score": 10.0}},
+        ]
+        result = compute_step_metrics(records)
+        assert result[0]["step_metrics"] is None
+
+    def test_no_output_text(self):
+        records = [
+            {"ts": "2026-01-01", "stoi": {"stoi_score": 20.0}},
+        ]
+        result = compute_step_metrics(records)
+        assert result[0]["step_metrics"] is None
+
+    def test_mixed_records(self):
+        records = [
+            {
+                "ts": "2026-01-01",
+                "output_text": "Step 1: Analysis with enough content to be analyzed. " * 3,
+                "stoi": {"stoi_score": 30.0},
+            },
+            {
+                "ts": "2026-01-02",
+                "output_text": "too short",
+                "stoi": {"stoi_score": 40.0},
+            },
+            {
+                "ts": "2026-01-03",
+                "stoi": {"stoi_score": 50.0},
+            },
+        ]
+        result = compute_step_metrics(records)
+        assert result[0]["step_metrics"] is not None
+        assert result[1]["step_metrics"] is None
+        assert result[2]["step_metrics"] is None
+
+
+# ── Integration: aggregate_step_metrics ───────────────────────────────────────
+
+class TestAggregateStepMetrics:
+    def test_empty_records(self):
+        assert aggregate_step_metrics([]) is None
+
+    def test_no_valid_metrics(self):
+        records = [
+            {"ts": "2026-01-01", "output_text": "short", "stoi": {"stoi_score": 10.0}},
+        ]
+        compute_step_metrics(records)
+        assert aggregate_step_metrics(records) is None
+
+    def test_valid_aggregation(self):
+        # Pre-compute metrics for two records with substantial text
+        long_text_a = (
+            "<trace>\nStep 1: Based on [Doc#1], the calculation shows 100 + 200 = 300.\n"
+            "Step 2: Therefore, the total is 300 units.\n</trace>\n<answer>300</answer>"
+        )
+        long_text_b = (
+            "<trace>\nStep 1: According to the data, we have 500 records to process.\n"
+            "Step 2: We filter and find 250 valid records.\n</trace>\n<answer>250</answer>"
+        )
+        records = [
+            {"ts": "2026-01-01", "output_text": long_text_a, "stoi": {"stoi_score": 30.0}},
+            {"ts": "2026-01-02", "output_text": long_text_b, "stoi": {"stoi_score": 40.0}},
+        ]
+        compute_step_metrics(records)
+        agg = aggregate_step_metrics(records)
+
+        assert agg is not None
+        assert agg["count"] == 2
+        assert 0 <= agg["avg_factuality"] <= 1
+        assert 0 <= agg["avg_validity"] <= 1
+        assert 0 <= agg["avg_coherence"] <= 1
+        assert 0 <= agg["avg_utility"] <= 1
+        assert "token_efficiency" in agg
+        assert "faithfulness_risk" in agg
+        assert "redundancy_ratio" in agg
+        assert agg["total_steps"] > 0
+        assert agg["total_reasoning_tokens"] >= 0
+
+
+# ── Integration: output_text extraction ───────────────────────────────────────
+
+class TestOutputTextExtraction:
+    def test_parse_extracts_output_text(self):
+        """Verify parse_claude_code_session extracts output_text from content blocks."""
+        import json
+        import tempfile
+
+        # Create a mock JSONL session file
+        records_data = [
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "model": "claude-sonnet",
+                    "usage": {
+                        "input_tokens": 5000,
+                        "cache_read_input_tokens": 3000,
+                        "cache_creation_input_tokens": 0,
+                        "output_tokens": 200,
+                    },
+                    "content": [
+                        {"type": "text", "text": "Step 1: Analysis of the problem.\nStep 2: Therefore the answer is 42."},
+                    ],
+                },
+                "timestamp": "2026-03-12T09:40:19.768Z",
+                "sessionId": "test-session-123",
+            },
+        ]
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
+            for r in records_data:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = f.name
+
+        try:
+            from stoi_analyze import parse_claude_code_session
+            records = parse_claude_code_session(tmp_path)
+            assert len(records) == 1
+            assert "output_text" in records[0]
+            assert "Step 1: Analysis" in records[0]["output_text"]
+            assert "42" in records[0]["output_text"]
+        finally:
+            import os
+            os.unlink(tmp_path)
+
+    def test_parse_with_string_content(self):
+        """Verify output_text is extracted when content is a plain string."""
+        import json
+        import tempfile
+
+        records_data = [
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {
+                        "input_tokens": 3000,
+                        "cache_read_input_tokens": 1000,
+                        "cache_creation_input_tokens": 0,
+                        "output_tokens": 100,
+                    },
+                    "content": "This is the assistant response text.",
+                },
+                "timestamp": "2026-03-12T09:40:19.768Z",
+                "sessionId": "test-session-456",
+            },
+        ]
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
+            for r in records_data:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = f.name
+
+        try:
+            from stoi_analyze import parse_claude_code_session
+            records = parse_claude_code_session(tmp_path)
+            assert len(records) == 1
+            assert records[0]["output_text"] == "This is the assistant response text."
+        finally:
+            import os
+            os.unlink(tmp_path)
+
+    def test_parse_no_content(self):
+        """Verify output_text is empty when no content is present."""
+        import json
+        import tempfile
+
+        records_data = [
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "usage": {
+                        "input_tokens": 3000,
+                        "cache_read_input_tokens": 1000,
+                        "cache_creation_input_tokens": 0,
+                        "output_tokens": 50,
+                    },
+                },
+                "timestamp": "2026-03-12T09:40:19.768Z",
+                "sessionId": "test-session-789",
+            },
+        ]
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
+            for r in records_data:
+                f.write(json.dumps(r) + "\n")
+            tmp_path = f.name
+
+        try:
+            from stoi_analyze import parse_claude_code_session
+            records = parse_claude_code_session(tmp_path)
+            assert len(records) == 1
+            assert records[0]["output_text"] == ""
+        finally:
+            import os
+            os.unlink(tmp_path)

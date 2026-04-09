@@ -49,6 +49,8 @@ COMMANDS = {
     "analyze": "离线分析 ~/.claude/projects/ 会话文件",
     "tui":     "启动实时 TUI 仪表盘",
     "trend":   "打印多轮含屎量趋势 ASCII 图",
+    "metrics": "步骤级质量分析（F/V/C/U + TE/SUS/FR/MG/RR）",
+    "report":  "综合报告：含屎量 + 步骤级指标 + 根因分析",
     "backfill-feedback-validity": "回填 Claude Code 反馈型 token 有效性",
     "feedback-validity": "查看 Claude Code 反馈型 token 有效性",
 }
@@ -461,6 +463,209 @@ def cmd_feedback_validity(args: list):
             _print_feedback_session_summaries(session_summaries, limit=parsed.limit)
 
 
+# ── metrics ──────────────────────────────────────────────────────────────────
+def cmd_metrics(args: list[str]):
+    """步骤级质量分析命令"""
+    import argparse as ap
+    from stoi_analyze import (
+        parse_claude_code_session, find_latest_session, find_recent_sessions,
+        compute_step_metrics, aggregate_step_metrics, print_step_metrics_report,
+    )
+
+    parser = ap.ArgumentParser(prog="stoi metrics", add_help=True)
+    parser.add_argument("--latest", action="store_true", help="分析最新会话")
+    parser.add_argument("--text", type=str, help="直接分析粘贴的文本")
+    parser.add_argument("--format", choices=["table", "json"], default="table")
+    parsed, remaining = parser.parse_known_args(args)
+
+    print_logo()
+
+    if parsed.text:
+        # 直接分析粘贴的文本
+        from stoi_metrics import analyze_output
+        result = analyze_output(parsed.text)
+        if parsed.format == "json":
+            console.print_json(json.dumps({
+                "composite_quality": result.composite_quality,
+                "avg_factuality": result.avg_factuality,
+                "avg_validity": result.avg_validity,
+                "avg_coherence": result.avg_coherence,
+                "avg_utility": result.avg_utility,
+                "token_efficiency": result.token_efficiency,
+                "step_utility_score": result.step_utility_score,
+                "faithfulness_risk": result.faithfulness_risk,
+                "monitorability_gain": result.monitorability_gain,
+                "redundancy_ratio": result.redundancy_ratio,
+                "total_reasoning_tokens": result.total_reasoning_tokens,
+                "steps": len(result.steps),
+            }, ensure_ascii=False))
+        else:
+            # Wrap into a record for print_step_metrics_report
+            mock_record = {"step_metrics": result, "ts": "direct input"}
+            agg = {
+                "count": 1,
+                "avg_factuality": result.avg_factuality,
+                "avg_validity": result.avg_validity,
+                "avg_coherence": result.avg_coherence,
+                "avg_utility": result.avg_utility,
+                "token_efficiency": result.token_efficiency,
+                "step_utility_score": result.step_utility_score,
+                "faithfulness_risk": result.faithfulness_risk,
+                "monitorability_gain": result.monitorability_gain,
+                "redundancy_ratio": result.redundancy_ratio,
+                "composite_quality": result.composite_quality,
+                "total_reasoning_tokens": result.total_reasoning_tokens,
+                "total_steps": len(result.steps),
+            }
+            print_step_metrics_report(agg, [mock_record])
+        return
+
+    # 分析会话文件
+    path = None
+    if parsed.latest:
+        path = find_latest_session()
+        if not path:
+            console.print("[yellow]⚠ 未找到 Claude Code 会话文件[/yellow]")
+            return
+    elif remaining:
+        from pathlib import Path as P
+        candidate = P(remaining[0])
+        if candidate.exists():
+            path = candidate
+        else:
+            console.print(f"[red]文件不存在: {remaining[0]}[/red]")
+            return
+    else:
+        # Default: latest session
+        path = find_latest_session()
+        if not path:
+            console.print("[yellow]⚠ 未找到 Claude Code 会话文件[/yellow]")
+            return
+
+    console.print(f"[bold #FFB800]🔍 分析: {path}[/bold #FFB800]\n")
+    records = parse_claude_code_session(str(path))
+
+    if not records:
+        console.print("[yellow]该会话无有效记录[/yellow]")
+        return
+
+    compute_step_metrics(records)
+    agg = aggregate_step_metrics(records)
+
+    if parsed.format == "json":
+        valid = [r for r in records if r.get("step_metrics") is not None]
+        output = {
+            "source": str(path),
+            "total_turns": len(records),
+            "analyzed_turns": len(valid),
+            "aggregated": agg,
+        }
+        console.print_json(json.dumps(output, ensure_ascii=False, default=str))
+    else:
+        print_step_metrics_report(agg, records)
+
+
+# ── report ──────────────────────────────────────────────────────────────────
+def cmd_report(args: list[str]):
+    """综合报告：含屎量 + 步骤级指标 + 根因分析"""
+    import argparse as ap
+    from datetime import timedelta
+    from stoi_analyze import (
+        parse_claude_code_session, find_recent_sessions,
+        compute_step_metrics, aggregate_step_metrics, print_step_metrics_report,
+    )
+    from stoi_engine import get_score_color
+
+    parser = ap.ArgumentParser(prog="stoi report", add_help=True)
+    parser.add_argument("--days", type=int, default=7, help="分析最近 N 天的会话")
+    parser.add_argument("--format", choices=["table", "json"], default="table")
+    parsed = parser.parse_args(args)
+
+    print_logo()
+
+    # 加载所有会话
+    files = find_recent_sessions(top=200)
+    if not files:
+        console.print("[yellow]⚠ 未找到 Claude Code 会话文件[/yellow]")
+        return
+
+    # 按日期过滤
+    now = datetime.now().timestamp()
+    cutoff = now - parsed.days * 86400
+    recent_files = [f for f in files if f.stat().st_mtime >= cutoff]
+
+    console.print(f"[bold #FFB800]📊 综合报告 — 最近 {parsed.days} 天 ({len(recent_files)} 个文件)[/bold #FFB800]\n")
+
+    all_records = []
+    for f in recent_files:
+        records = parse_claude_code_session(str(f))
+        all_records.extend(records)
+
+    if not all_records:
+        console.print("[yellow]该时间段无有效记录[/yellow]")
+        return
+
+    # Section 1: STOI Score Summary
+    total_input   = sum(r["stoi"]["input_tokens"] for r in all_records)
+    total_wasted  = sum(r["stoi"]["wasted_tokens"] for r in all_records)
+    total_output  = sum(r["stoi"]["output_tokens"] for r in all_records)
+    total_cache   = sum(r["stoi"]["cache_read"] for r in all_records)
+    avg_score     = round(sum(r["stoi"]["stoi_score"] for r in all_records) / len(all_records), 1)
+    cache_hit     = round(total_cache / total_input * 100, 1) if total_input > 0 else 0.0
+
+    color = get_score_color(avg_score)
+    level = "DEEP_SHIT"
+    for lvl, (lo, hi) in SHIT_THRESHOLDS.items():
+        if lo <= avg_score < hi:
+            level = lvl
+            break
+
+    summary_table = Table(title="Section 1: STOI 含屎量汇总", box=box.ROUNDED, border_style="#FFB800")
+    summary_table.add_column("指标", style="bold #FFB800")
+    summary_table.add_column("数值", justify="right")
+    summary_table.add_row("分析文件数", f"{len(recent_files)}")
+    summary_table.add_row("总轮次", f"{len(all_records)}")
+    summary_table.add_row("平均含屎量", f"[{color}]{avg_score}%  {SHIT_EMOJI[level]}[/{color}]")
+    summary_table.add_row("缓存命中率", f"[green]{cache_hit}%[/green]")
+    summary_table.add_row("总输入", f"{total_input:,} tokens")
+    summary_table.add_row("白白浪费", f"[red]{total_wasted:,} tokens[/red]")
+    summary_table.add_row("有效输出", f"{total_output:,} tokens")
+    console.print(summary_table)
+
+    # Section 2: Step-Level Metrics
+    console.print()
+    compute_step_metrics(all_records)
+    agg = aggregate_step_metrics(all_records)
+    print_step_metrics_report(agg, all_records)
+
+    # Section 3: DEEP_SHIT Root Cause Analysis
+    if parsed.format == "table":
+        console.print()
+        deep_shit = [r for r in all_records if r["stoi"]["level"] == "DEEP_SHIT"]
+        if deep_shit:
+            console.print("[bold red]Section 3: DEEP_SHIT 根因分析[/bold red]")
+            cause_table = Table(box=box.SIMPLE, border_style="dim")
+            cause_table.add_column("原因类型", style="bold red", width=20)
+            cause_table.add_column("出现次数", justify="right", width=10)
+            cause_table.add_column("说明", style="dim", width=50)
+
+            no_cache = sum(1 for r in deep_shit if r["stoi"]["cache_read"] == 0)
+            low_cache = sum(1 for r in deep_shit if 0 < r["stoi"]["cache_hit_rate"] < 30)
+            high_creation = sum(1 for r in deep_shit if r["stoi"].get("cache_creation", 0) > r["stoi"]["input_tokens"] * 0.5)
+
+            causes = [
+                ("完全无缓存命中", no_cache, "cache_read=0，每次重新处理全部上下文"),
+                ("缓存命中率低", low_cache, "0-30% 命中率，大量 token 被浪费"),
+                ("频繁缓存重建", high_creation, "cache_creation 占比高，缓存频繁失效"),
+            ]
+            for name, count, desc in causes:
+                if count > 0:
+                    cause_table.add_row(name, str(count), desc)
+            console.print(cause_table)
+        else:
+            console.print("[green]✅ 无 DEEP_SHIT 轮次，根因分析无需执行[/green]")
+
+
 # ── help ─────────────────────────────────────────────────────────────────────
 def cmd_help():
     print_logo()
@@ -501,6 +706,10 @@ def main():
 
     if cmd == "analyze":
         cmd_analyze(rest)
+    elif cmd == "metrics":
+        cmd_metrics(rest)
+    elif cmd == "report":
+        cmd_report(rest)
     elif cmd == "backfill-feedback-validity":
         cmd_backfill_feedback_validity(rest)
     elif cmd == "feedback-validity":

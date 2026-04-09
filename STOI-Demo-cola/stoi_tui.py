@@ -27,6 +27,7 @@ from stoi_engine import (
     calc_stoi, SHIT_EMOJI, SHIT_THRESHOLDS,
     get_score_color, TTS_MESSAGES,
 )
+from stoi_metrics import analyze_output
 
 # ── 路径配置 ──────────────────────────────────────────────────────────────────
 CLAUDE_DIR   = Path("~/.claude/projects").expanduser()
@@ -596,6 +597,19 @@ class DashboardScreen(Screen):
         margin-bottom: 1;
         height: 7;
     }
+    #metrics-box {
+        background: #0A1520;
+        border: solid #005577;
+        padding: 1;
+        margin-bottom: 1;
+        height: auto;
+    }
+    #fvcu-display {
+        color: #CCCCCC;
+    }
+    #core-metrics-display {
+        color: #AAAAAA;
+    }
     #turns-table {
         height: 1fr;
         background: #0D0D0D;
@@ -639,12 +653,16 @@ class DashboardScreen(Screen):
                     yield Static("", id="stats-content")
                 yield Static("", id="suggestions-box")
 
-            # 右侧面板：趋势 + 明细表
+            # 右侧面板：趋势 + 指标 + 明细表
             with Vertical(id="right-panel"):
                 with Vertical(id="sparkline-box"):
                     yield Static("[bold #FFB800]多轮含屎量趋势[/bold #FFB800]", id="sparkline-title")
                     yield Static("", id="sparkline-display")
                     yield Static("", id="sparkline-stats")
+                with Vertical(id="metrics-box"):
+                    yield Static("[bold cyan]Step-Level Metrics[/bold cyan]", id="metrics-title")
+                    yield Static("", id="fvcu-display")
+                    yield Static("", id="core-metrics-display")
                 yield Static("[bold #FFB800]对话轮次明细[/bold #FFB800]")
                 yield DataTable(id="turns-table")
 
@@ -745,6 +763,9 @@ class DashboardScreen(Screen):
                 f"[dim]趋势:[/dim] {trend_str}"
             )
 
+        # Step-Level Metrics
+        self._update_metrics_display(records)
+
         # 轮次明细表
         table = self.query_one("#turns-table", DataTable)
         table.clear()
@@ -791,11 +812,83 @@ class DashboardScreen(Screen):
                 if growth > 200:
                     suggestions.append(f"📈 [yellow]上下文膨胀[/yellow] {growth:.0f}% → 建议在第 {len(records)//2} 轮后压缩历史")
 
+        # Step-level quality insights
+        valid_with_metrics = [r for r in records if r.get("step_metrics") is not None]
+        if valid_with_metrics:
+            avg_u = sum(r["step_metrics"].avg_utility for r in valid_with_metrics) / len(valid_with_metrics)
+            avg_fr = sum(r["step_metrics"].faithfulness_risk for r in valid_with_metrics) / len(valid_with_metrics)
+            avg_rr = sum(r["step_metrics"].redundancy_ratio for r in valid_with_metrics) / len(valid_with_metrics)
+
+            if avg_u < 0.4:
+                suggestions.append(f"📉 [red]步骤效用低[/red] (U={avg_u:.2f}) → 输出中装饰性/重复内容过多")
+            if avg_fr > 0.4:
+                suggestions.append(f"⚠️ [yellow]忠实度风险高[/yellow] (FR={avg_fr:.2f}) → 推理步骤逻辑性不足")
+            if avg_rr > 0.3:
+                suggestions.append(f"🔄 [yellow]冗余比偏高[/yellow] (RR={avg_rr:.2f}) → {int(avg_rr*100)}% 的推理 token 是冗余的")
+
         if not suggestions:
             suggestions.append("✅ [green]整体含屎量正常，继续保持[/green]")
 
         suggestions.append("[dim]按 S 键语音播报结果，按 B 键分析造屎元凶[/dim]")
         return suggestions
+
+    def _update_metrics_display(self, records: list) -> None:
+        """Compute and display step-level quality metrics."""
+        # Extract output_text from session file for records that don't have it
+        valid_records = []
+        for r in records:
+            text = r.get("output_text", "")
+            if len(text) > 20:
+                try:
+                    r["step_metrics"] = analyze_output(text)
+                    valid_records.append(r)
+                except Exception:
+                    pass
+
+        if not valid_records:
+            self.query_one("#fvcu-display", Static).update("[dim]无足够的输出文本进行步骤级分析[/dim]")
+            self.query_one("#core-metrics-display", Static).update("")
+            return
+
+        # Aggregate
+        n = len(valid_records)
+        avg_f = sum(r["step_metrics"].avg_factuality for r in valid_records) / n
+        avg_v = sum(r["step_metrics"].avg_validity for r in valid_records) / n
+        avg_c = sum(r["step_metrics"].avg_coherence for r in valid_records) / n
+        avg_u = sum(r["step_metrics"].avg_utility for r in valid_records) / n
+        avg_fr = sum(r["step_metrics"].faithfulness_risk for r in valid_records) / n
+        avg_rr = sum(r["step_metrics"].redundancy_ratio for r in valid_records) / n
+        avg_te = sum(r["step_metrics"].token_efficiency for r in valid_records) / n
+        avg_mg = sum(r["step_metrics"].monitorability_gain for r in valid_records) / n
+
+        # F/V/C/U bars
+        def _mini_bar(val, width=10):
+            filled = int(val * width)
+            color = "green" if val >= 0.6 else "yellow" if val >= 0.4 else "red"
+            return f"[{color}]{'█' * filled}[/{color}][dim]{'░' * (width - filled)}[/dim]"
+
+        fvcu_text = (
+            f"F {_mini_bar(avg_f)} {avg_f:.2f}  "
+            f"V {_mini_bar(avg_v)} {avg_v:.2f}  "
+            f"C {_mini_bar(avg_c)} {avg_c:.2f}  "
+            f"U {_mini_bar(avg_u)} {avg_u:.2f}"
+        )
+        self.query_one("#fvcu-display", Static).update(fvcu_text)
+
+        # Core metrics line
+        fr_color = "green" if avg_fr < 0.2 else "yellow" if avg_fr < 0.4 else "red"
+        rr_color = "green" if avg_rr < 0.2 else "yellow" if avg_rr < 0.4 else "red"
+        te_color = "green" if avg_te > 0.5 else "yellow" if avg_te > 0.2 else "red"
+        mg_color = "green" if avg_mg > 0.5 else "yellow" if avg_mg > 0.3 else "red"
+        core_text = (
+            f"TE [{te_color}]{avg_te:.3f}[/{te_color}]  "
+            f"SUS {avg_u:.3f}  "
+            f"FR [{fr_color}]{avg_fr:.3f}[/{fr_color}]  "
+            f"MG [{mg_color}]{avg_mg:.3f}[/{mg_color}]  "
+            f"RR [{rr_color}]{avg_rr:.3f}[/{rr_color}]  "
+            f"[dim]({n} turns)[/dim]"
+        )
+        self.query_one("#core-metrics-display", Static).update(core_text)
 
     def action_refresh_data(self) -> None:
         self._load_data()

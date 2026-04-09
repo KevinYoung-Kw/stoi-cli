@@ -98,6 +98,18 @@ def parse_claude_code_session(path: str) -> list[dict]:
                 except Exception:
                     ts_str = ts_raw[:19] if ts_raw else "unknown"
 
+                # Extract output text from assistant content blocks
+                output_text = ""
+                content = msg.get("content", [])
+                if isinstance(content, list):
+                    parts = []
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "text":
+                            parts.append(block.get("text", ""))
+                    output_text = "\n".join(parts)
+                elif isinstance(content, str):
+                    output_text = content
+
                 stoi = calc_stoi(usage, turn_index=len(records))
 
                 record = {
@@ -107,6 +119,7 @@ def parse_claude_code_session(path: str) -> list[dict]:
                     "stoi":      stoi,
                     "usage":     usage,
                     "source":    str(path),
+                    "output_text": output_text,
                 }
                 records.append(record)
 
@@ -273,10 +286,155 @@ def make_sparkline(values: list[float]) -> str:
     return result
 
 
+def compute_step_metrics(records: list[dict]) -> list[dict]:
+    """Run analyze_output() on each record with sufficient output_text."""
+    for r in records:
+        text = r.get("output_text", "")
+        if len(text) > 20:
+            try:
+                r["step_metrics"] = analyze_output(text)
+            except Exception:
+                r["step_metrics"] = None
+        else:
+            r["step_metrics"] = None
+    return records
+
+
+def aggregate_step_metrics(records: list[dict]) -> dict | None:
+    """Average F/V/C/U and TE/SUS/FR/MG/RR across records with metrics."""
+    valid = [r for r in records if r.get("step_metrics") is not None]
+    if not valid:
+        return None
+
+    n = len(valid)
+    fields = [
+        "avg_factuality", "avg_validity", "avg_coherence", "avg_utility",
+        "token_efficiency", "step_utility_score", "faithfulness_risk",
+        "monitorability_gain", "redundancy_ratio", "composite_quality",
+    ]
+
+    agg = {"count": n, "total_reasoning_tokens": 0}
+    for f in fields:
+        agg[f] = sum(getattr(r["step_metrics"], f) for r in valid) / n
+
+    agg["total_reasoning_tokens"] = sum(
+        r["step_metrics"].total_reasoning_tokens for r in valid
+    )
+    agg["total_steps"] = sum(len(r["step_metrics"].steps) for r in valid)
+    return agg
+
+
+def print_step_metrics_report(agg: dict, per_turn_records: list[dict]):
+    """Print Rich tables for step-level quality metrics."""
+    if agg is None:
+        console.print("[dim]无足够的输出内容进行步骤级分析[/dim]")
+        return
+
+    # ── F/V/C/U Table ────────────────────────────────────────────────────
+    fvcu_table = Table(
+        title="Step-Level Quality (F/V/C/U)",
+        box=box.ROUNDED,
+        border_style="cyan",
+        title_style="bold cyan",
+        show_header=True,
+        padding=(0, 2),
+    )
+    fvcu_table.add_column("Dimension", style="bold cyan", width=14)
+    fvcu_table.add_column("Score", justify="right", width=8)
+    fvcu_table.add_column("Bar", width=24)
+    fvcu_table.add_column("Desc", style="dim", width=30)
+
+    dims = [
+        ("Factuality", agg["avg_factuality"], "Groundedness / evidence"),
+        ("Validity",   agg["avg_validity"],   "Logical correctness"),
+        ("Coherence",  agg["avg_coherence"],  "Informativeness / clarity"),
+        ("Utility",    agg["avg_utility"],    "Contribution to answer"),
+    ]
+    for name, val, desc in dims:
+        bar_len = int(val * 20)
+        bar = "█" * bar_len + "░" * (20 - bar_len)
+        color = "green" if val >= 0.6 else "yellow" if val >= 0.4 else "red"
+        fvcu_table.add_row(name, f"[{color}]{val:.3f}[/{color}]", f"[{color}]{bar}[/{color}]", desc)
+
+    console.print(fvcu_table)
+
+    # ── Core Metrics Table ────────────────────────────────────────────────
+    metrics_table = Table(
+        title="Core Metrics (TE/SUS/FR/MG/RR)",
+        box=box.ROUNDED,
+        border_style="cyan",
+        title_style="bold cyan",
+        show_header=True,
+        padding=(0, 2),
+    )
+    metrics_table.add_column("Metric", style="bold cyan", width=8)
+    metrics_table.add_column("Value", justify="right", width=10)
+    metrics_table.add_column("Desc", style="dim", width=40)
+
+    core_metrics = [
+        ("TE",  agg["token_efficiency"],   "Token Efficiency: quality per 1k reasoning tokens"),
+        ("SUS", agg["step_utility_score"],  "Step Utility Score: token-weighted avg utility"),
+        ("FR",  agg["faithfulness_risk"],   "Faithfulness Risk: shortcut reasoning risk"),
+        ("MG",  agg["monitorability_gain"], "Monitorability Gain: CoT monitoring value"),
+        ("RR",  agg["redundancy_ratio"],    "Redundancy Ratio: token-weighted redundancy"),
+    ]
+    for name, val, desc in core_metrics:
+        if name in ("FR", "RR"):
+            color = "green" if val < 0.2 else "yellow" if val < 0.4 else "red"
+        elif name == "MG":
+            color = "green" if val > 0.5 else "yellow" if val > 0.3 else "red"
+        else:
+            color = "green" if val > 0.5 else "yellow" if val > 0.2 else "red"
+        metrics_table.add_row(name, f"[{color}]{val:.4f}[/{color}]", desc)
+
+    console.print(metrics_table)
+
+    # ── Composite + Summary ──────────────────────────────────────────────
+    console.print(
+        f"  [bold cyan]Composite Quality[/bold cyan]: {agg['composite_quality']:.4f}   "
+        f"[dim]({agg['total_steps']} steps, {agg['total_reasoning_tokens']} reasoning tokens across {agg['count']} turns)[/dim]"
+    )
+
+    # ── Per-turn breakdown (last 10) ─────────────────────────────────────
+    valid_turns = [r for r in per_turn_records if r.get("step_metrics") is not None]
+    if len(valid_turns) > 1:
+        console.print("\n[bold cyan]Per-Turn Metrics (last 10)[/bold cyan]")
+        turn_table = Table(box=box.SIMPLE, border_style="dim", padding=(0, 1))
+        turn_table.add_column("Turn", style="dim", width=6)
+        turn_table.add_column("Steps", justify="right", width=6)
+        turn_table.add_column("F", width=7)
+        turn_table.add_column("V", width=7)
+        turn_table.add_column("C", width=7)
+        turn_table.add_column("U", width=7)
+        turn_table.add_column("Q", width=7)
+        turn_table.add_column("FR", width=7)
+        turn_table.add_column("RR", width=7)
+
+        for r in valid_turns[-10:]:
+            m = r["step_metrics"]
+            n_steps = len(m.steps)
+            q_color = "green" if m.composite_quality > 0.6 else "yellow" if m.composite_quality > 0.4 else "red"
+            fr_color = "green" if m.faithfulness_risk < 0.2 else "yellow" if m.faithfulness_risk < 0.4 else "red"
+            rr_color = "green" if m.redundancy_ratio < 0.2 else "yellow" if m.redundancy_ratio < 0.4 else "red"
+            turn_table.add_row(
+                str(r.get("turn", r.get("ts", ""))[:6]),
+                str(n_steps),
+                f"{m.avg_factuality:.3f}",
+                f"{m.avg_validity:.3f}",
+                f"{m.avg_coherence:.3f}",
+                f"{m.avg_utility:.3f}",
+                f"[{q_color}]{m.composite_quality:.3f}[/{q_color}]",
+                f"[{fr_color}]{m.faithfulness_risk:.3f}[/{fr_color}]",
+                f"[{rr_color}]{m.redundancy_ratio:.3f}[/{rr_color}]",
+            )
+        console.print(turn_table)
+
+
 def cmd_analyze(args: list[str]):
     """主分析入口"""
     # 解析参数
     all_sessions = "--all" in args
+    show_metrics = "--metrics" in args
     top_n = 10
     for i, a in enumerate(args):
         if a == "--top" and i + 1 < len(args):
@@ -296,6 +454,11 @@ def cmd_analyze(args: list[str]):
             console.print(f"\n[bold #FFB800]🔍 分析文件: {p}[/bold #FFB800]")
             records = parse_claude_code_session(p)
             print_session_report(records, p)
+            if show_metrics:
+                compute_step_metrics(records)
+                agg = aggregate_step_metrics(records)
+                console.print()
+                print_step_metrics_report(agg, records)
             write_to_log(records)
 
     elif all_sessions:
@@ -306,6 +469,11 @@ def cmd_analyze(args: list[str]):
         for f in all_files:
             all_records.extend(parse_claude_code_session(str(f)))
         print_session_report(all_records, f"全部 {len(all_files)} 个文件")
+        if show_metrics:
+            compute_step_metrics(all_records)
+            agg = aggregate_step_metrics(all_records)
+            console.print()
+            print_step_metrics_report(agg, all_records)
         write_to_log(all_records)
 
     else:
@@ -323,6 +491,11 @@ def cmd_analyze(args: list[str]):
             all_records.extend(records)
 
         print_session_report(all_records, f"最近 {len(files)} 个文件（共 {len(all_records)} 轮）")
+        if show_metrics:
+            compute_step_metrics(all_records)
+            agg = aggregate_step_metrics(all_records)
+            console.print()
+            print_step_metrics_report(agg, all_records)
         write_to_log(all_records)
 
         # 显示最新文件路径
