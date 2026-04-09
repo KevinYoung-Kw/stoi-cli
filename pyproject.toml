@@ -45,9 +45,9 @@ dev = [
 stoi = "stoi.stoi:main"
 
 [project.urls]
-Homepage = "https://github.com/KevinYoung-Kw/stoi"
-Repository = "https://github.com/KevinYoung-Kw/stoi"
-Issues = "https://github.com/KevinYoung-Kw/stoi/issues"
+Homepage = "https://github.com/KevinYoung-Kw/stoi-cli"
+Repository = "https://github.com/KevinYoung-Kw/stoi-cli"
+Issues = "https://github.com/KevinYoung-Kw/stoi-cli/issues"
 
 [tool.setuptools]
 packages = ["stoi"]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-REPO_URL="https://github.com/KevinYoung-Kw/stoi.git"
+REPO_URL="https://github.com/KevinYoung-Kw/stoi-cli.git"
 INSTALL_DIR=""
 
 # 颜色定义
