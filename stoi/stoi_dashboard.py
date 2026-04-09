@@ -508,25 +508,36 @@ function analyzeTurn(btn, turnIndex) {
     btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>分析'; btn.disabled = false; return;
   }
 
-  const prompt = `分析这一轮 Claude Code 对话的 Token 效率问题。
+  const prompt = `你是 Claude Code Token 效率专家。分析这一轮对话，给出精确的优化建议，包括可直接使用的优化后 prompt。
 
-轮次信息：
-用户输入: ${turnData.user_text || '(无)'}
-工具调用: ${turnData.tool_calls}
-工具返回(前500字): ${turnData.tool_results_preview}
-AI输出(前300字): ${turnData.assistant_text}
-Token用量: input=${turnData.input_tokens}, cache=${turnData.cache_read}, output=${turnData.output_tokens}
-含屎量: ${turnData.stoi_score}%
+## 本轮数据
+- 用户输入: ${turnData.user_text || '(无)'}
+- 工具调用: ${turnData.tool_calls}
+- 工具返回摘要(前500字): ${turnData.tool_results_preview}
+- AI 输出(前300字): ${turnData.assistant_text}
+- Token: input=${turnData.input_tokens}, cache_read=${turnData.cache_read}, output=${turnData.output_tokens}
+- 含屎量: ${turnData.stoi_score}% (越低越好)
 
-给出：
-1. 这轮最大的 token 浪费在哪里（具体定位）
-2. 一条可立即执行的优化操作（CLAUDE.md 配置或 prompt 改法）
-3. 预计节省量
+## 你需要给出
 
+**1. 浪费定位**
+这轮 token 最大的浪费来自哪里？（工具返回过大？用户 prompt 太模糊？AI 输出冗余？）
+
+**2. 优化后的 user prompt**
+基于用户原始输入，给出一个 token 更少但效果相同甚至更好的版本。
 格式：
-**[浪费点]** 描述
-**操作**: 具体配置
-**收益**: 量化`;
+\`\`\`
+[优化后 prompt]
+\`\`\`
+改动说明：xxx（一句话）
+
+**3. 预期收益**
+节省约 XX% tokens，理由：xxx
+
+规则：
+- 如果用户输入是空或系统命令，说明无法优化
+- 优化后 prompt 必须保持原意，不能改变任务目标
+- 用中文回答`;
 
   fetch(LLM_BASE_URL + '/chat/completions', {
     method: 'POST',
@@ -537,7 +548,7 @@ Token用量: input=${turnData.input_tokens}, cache=${turnData.cache_read}, outpu
     body: JSON.stringify({
       model: LLM_MODEL,
       messages: [{role: 'user', content: prompt}],
-      max_tokens: 400
+      max_tokens: 700
     })
   })
   .then(r => r.json())
@@ -617,6 +628,18 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
             f'<span class="usage-chip"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px;margin-right:2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>output {out_t:,}</span>'
         )
 
+        # context 增长标注
+        growth_badge = ""
+        if t.context_growth_pct > 100:
+            growth_badge = f'<span style="font-size:10px;color:#ef4444;margin-left:4px">+{t.context_growth_pct:.0f}%</span>'
+        elif t.context_growth_pct > 30:
+            growth_badge = f'<span style="font-size:10px;color:#f97316;margin-left:4px">+{t.context_growth_pct:.0f}%</span>'
+        elif t.context_growth_pct > 0:
+            growth_badge = f'<span style="font-size:10px;color:#6b7280;margin-left:4px">+{t.context_growth_pct:.0f}%</span>'
+
+        # api_call_count badge
+        api_badge = f'<span style="font-size:10px;color:#8b5cf6;margin-left:4px">×{t.api_call_count}</span>' if t.api_call_count > 1 else ""
+
         rows.append(f"""
 <tr id="turn-row-{t.turn_index}" class="turn-row">
   <td class="turn-num">#{t.turn_index + 1}</td>
@@ -626,8 +649,8 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
     <span class="toggle-detail" data-detail="{t.turn_index}"
           onclick="event.stopPropagation();toggleDetail({t.turn_index})">▼ 展开</span>
   </td>
-  <td class="turn-tools">{_h(tool_names)}</td>
-  <td class="turn-tokens">{tokens_fmt}</td>
+  <td class="turn-tools">{_h(tool_names)}{api_badge}</td>
+  <td class="turn-tokens">{tokens_fmt}{growth_badge}</td>
   <td class="turn-score">{score_badge}</td>
   <td class="turn-action">
     <button class="btn-analyze"
@@ -732,7 +755,24 @@ def generate_dashboard(analysis: ChainAnalysis, session_path: Path) -> Path:
   </div>
 </div>"""
 
+    # 多轮指标
+    bloat_pct = analysis.context_bloat_pct
+    bloat_color = "#ef4444" if bloat_pct > 300 else "#f97316" if bloat_pct > 100 else "#22c55e"
+    eff_pct = round(analysis.avg_efficiency_score * 100, 1)
+    eff_color = "#22c55e" if eff_pct >= 70 else "#f59e0b" if eff_pct >= 40 else "#ef4444"
+
+    compress_html = ""
+    if analysis.compress_saving_estimate:
+        ce = analysis.compress_saving_estimate
+        compress_html = f"""
+<div class="compress-banner">
+  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:6px"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+  <strong>上下文膨胀 {bloat_pct:.0f}%</strong> — 压缩 50% 历史可节省 {ce['tokens_saved']:,} tokens ({ce['pct_saved']}%)
+  &nbsp;|&nbsp; <span style="color:#6b7280">{_h(ce['action'])}</span>
+</div>"""
+
     sec_summary = f"""
+{compress_html}
 <div class="summary-row">
   <div class="summary-card amber">
     <div class="summary-value" style="color:{avg_stoi_color}">{stats['avg_stoi']:.1f}%</div>
@@ -743,12 +783,12 @@ def generate_dashboard(analysis: ChainAnalysis, session_path: Path) -> Path:
     <div class="summary-label">缓存命中</div>
   </div>
   <div class="summary-card blue">
-    <div class="summary-value" style="color:{tr_ratio_color}">{stats['tool_result_ratio']:.1f}%</div>
-    <div class="summary-label">Tool Result 占比</div>
+    <div class="summary-value" style="color:{eff_color}">{eff_pct:.0f}%</div>
+    <div class="summary-label">平均效率分</div>
   </div>
   <div class="summary-card purple">
-    <div class="summary-value" style="color:#8b5cf6">{_h(opt_str)}</div>
-    <div class="summary-label">可优化 tokens</div>
+    <div class="summary-value" style="color:{bloat_color}">{bloat_pct:.0f}%</div>
+    <div class="summary-label">上下文膨胀</div>
   </div>
 </div>"""
 

@@ -50,8 +50,7 @@ COMMANDS = {
     "/overview":  ("全局效率报告",                        "所有历史 session 汇总"),
     "/dashboard": ("生成可交互 HTML 分析面板",            "浏览器打开，按需 LLM 分析"),
     "/blame":     ("定位 Cache Miss 元凶",                "扫描 System Prompt"),
-    "/dashboard": ("可视化 Dashboard + LLM 分析",         "浏览器打开，按轮次分析"),
-    "/setup":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
+    "/mcp":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
     "/?":         ("帮助",                               ""),
     "/quit":      ("退出",                               ""),
 }
@@ -170,7 +169,7 @@ def print_welcome():
     )
     console.print()
     console.print("  [dim]/ for commands · ? for shortcuts · Ctrl+D to exit[/dim]")
-    console.print("  [dim]/setup to configure MCP for Claude Code integration[/dim]")
+    console.print("  [dim]/mcp to configure MCP for Claude Code integration[/dim]")
     console.print()
 
 
@@ -227,17 +226,11 @@ def handle_command(cmd: str) -> bool:
     elif cmd == "/overview":
         _run_overview()
 
-    elif cmd == "/dashboard":
-        _run_dashboard()
-
-    elif cmd == "/setup":
+    elif cmd == "/mcp":
         _run_setup()
 
     elif cmd == "/blame":
         _run_blame()
-
-    elif cmd == "/dashboard":
-        _run_dashboard()
 
     elif cmd == "":
         pass  # 空行不报错
@@ -248,15 +241,9 @@ def handle_command(cmd: str) -> bool:
     return True
 
 
-<<<<<<< HEAD:STOI-Demo-cola/stoi_repl.py
 def _run_report(llm: bool = False, speak_summary: bool = False):
-    from stoi_core import analyze
-    from stoi_report import render_cli
-=======
-def _run_report(llm: bool = False):
     from .stoi_core import analyze
     from .stoi_report import render_cli
->>>>>>> c191a3f (feat: 3-layer Yapping detection (regex + embedding + qwen-turbo LLM judge)):STOI-Demo-cola/stoi/stoi_repl.py
 
     console.print()
     with console.status("[dim]分析中...[/dim]", spinner="dots"):
@@ -676,6 +663,20 @@ def _run_overview():
         console.print("  [green]✅ 整体使用模式健康[/green]")
     console.print()
 
+    # 项目维度统计（哪个项目最浪费）
+    projects = r.get("project_stats", [])
+    if projects:
+        console.print(f"  [bold white]按项目统计[/bold white]  [dim]（按 session 大小排序）[/dim]")
+        console.print()
+        for p in projects:
+            bar_w = min(15, int(p["total_size_mb"] / 5))
+            bar = "█" * bar_w
+            console.print(
+                f"  [#FFB800]{bar:<15}[/#FFB800]  [dim]{p['path']:<35}[/dim]  "
+                f"[white]{p['sessions']}[/white] sessions  [dim]{p['total_size_mb']:.0f}MB[/dim]"
+            )
+        console.print()
+
 
 def _run_dashboard():
     """生成可交互的 HTML 分析面板，按需 LLM 分析每轮"""
@@ -904,9 +905,19 @@ def _run_blame():
         console.print("  [dim]已取消[/dim]")
         return
 
-    from stoi_engine import l3_cache_blame
-    result = l3_cache_blame(prompt)
-    culprits = result.get("culprits", [])
+    import re
+    patterns = {
+        "时间戳注入": (r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}', "HIGH", "每次变化导致 KV Cache 全部失效，建议移至 user message"),
+        "随机 UUID":  (r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', "HIGH", "UUID 变化导致前缀不匹配，建议移至 user message"),
+        "绝对路径":   (r'/Users/[A-Za-z0-9_]+|/home/[A-Za-z0-9_]+', "MED", "绝对路径跨设备失效，建议用相对路径或环境变量"),
+        "进程 ID":    (r'\bpid[:\s=]+\d+', "MED", "PID 每次不同导致缓存失效，建议移至 user message"),
+    }
+
+    culprits = []
+    for name, (pattern, severity, fix) in patterns.items():
+        matches = re.findall(pattern, prompt, re.IGNORECASE)
+        if matches:
+            culprits.append({"desc": f"{name} (示例: {matches[0][:50]})", "severity": severity, "fix": fix})
 
     if not culprits:
         console.print()

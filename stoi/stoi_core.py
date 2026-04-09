@@ -902,6 +902,9 @@ def get_global_efficiency_report() -> dict:
     # 最长 session
     longest = data.get("longestSession", {})
 
+    # 按项目分组统计（从 session 文件目录名提取）
+    project_stats = _get_project_stats()
+
     return {
         "total_messages":   data.get("totalMessages", 0),
         "total_sessions":   data.get("totalSessions", 0),
@@ -917,7 +920,40 @@ def get_global_efficiency_report() -> dict:
         "repeat_messages":  repeat_count,
         "longest_session":  longest,
         "recent_days":      recent_days[-7:],
+        "project_stats":    project_stats,
     }
+
+
+def _get_project_stats(top: int = 5) -> list[dict]:
+    """
+    按项目分组统计 session 数量和大小。
+    项目 = ~/.claude/projects/ 下的目录名（对应工作目录路径）
+    """
+    base = Path("~/.claude/projects").expanduser()
+    if not base.exists():
+        return []
+
+    projects = []
+    for proj_dir in base.iterdir():
+        if not proj_dir.is_dir():
+            continue
+        sessions = list(proj_dir.glob("*.jsonl"))
+        if not sessions:
+            continue
+        total_size = sum(f.stat().st_size for f in sessions)
+        latest_mtime = max(f.stat().st_mtime for f in sessions)
+        # 把目录名还原为路径（-Users-kevinyoung-Desktop-xxx → ~/Desktop/xxx）
+        readable = proj_dir.name.replace("-", "/").lstrip("/")
+        readable = "~/" + "/".join(readable.split("/")[2:]) if "/" in readable else readable
+        projects.append({
+            "path":         readable[:40],
+            "dir_name":     proj_dir.name[:30],
+            "sessions":     len(sessions),
+            "total_size_mb": round(total_size / 1024 / 1024, 1),
+            "latest_mtime": latest_mtime,
+        })
+
+    return sorted(projects, key=lambda x: x["total_size_mb"], reverse=True)[:top]
 
 
 def _detect_repeat_messages(window_minutes: int = 5) -> int:

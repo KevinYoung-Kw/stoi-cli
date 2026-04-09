@@ -30,8 +30,6 @@ import sys
 import os
 from pathlib import Path
 
-# Ensure STOI modules are importable regardless of working directory
-sys.path.insert(0, str(Path(__file__).parent.resolve()))
 
 # MCP protocol over stdin/stdout
 def send(obj: dict):

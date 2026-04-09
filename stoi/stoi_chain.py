@@ -66,6 +66,9 @@ class ChainTurn:
     cache_read_tokens:   int = 0
     tool_result_tokens:  int = 0
     stoi_score:          float = 0.0
+    # 多轮维度（参考调研：context 增长是核心指标）
+    context_growth_pct:  float = 0.0   # 相对第一轮的 context 增长 %
+    efficiency_score:    float = 0.0   # 0-1，越高越好（1 - stoi/100 * cache_factor）
 
 
 @dataclass
@@ -73,10 +76,16 @@ class ChainAnalysis:
     session_name: str
     turns:        list[ChainTurn]
     # 汇总
-    total_turns:           int = 0
-    total_input_tokens:    int = 0
-    total_tool_result_tokens: int = 0
-    tool_result_ratio:     float = 0.0  # tool result 占总 input 的比例
+    total_turns:              int   = 0
+    total_input_tokens:       int   = 0
+    total_tool_result_tokens: int   = 0
+    tool_result_ratio:        float = 0.0
+    # 多轮效率指标（来自调研：Braintrust 最接近，但我们更进一步）
+    avg_efficiency_score:     float = 0.0   # 0-1
+    degradation_turn:         int   = -1    # 从哪一轮开始效率显著下降
+    context_bloat_pct:        float = 0.0   # 整体上下文膨胀 %
+    # compress-and-test 估算（不真的重跑，基于 context 增长比例估算）
+    compress_saving_estimate: dict  = field(default_factory=dict)
     # 四层问题
     l1_syntax_issues:    list[dict] = field(default_factory=list)
     l2_semantic_issues:  list[dict] = field(default_factory=list)
@@ -288,6 +297,51 @@ def analyze_chain(turns: list[ChainTurn], session_name: str = "") -> ChainAnalys
         analysis.tool_result_ratio = round(
             analysis.total_tool_result_tokens / analysis.total_input_tokens, 3
         )
+
+    # ── 多轮效率指标（调研核心：context 增长 + 劣化时间线）──────────────────
+    first_input = turns[0].total_input_tokens if turns else 0
+    inputs = [t.total_input_tokens for t in turns]
+
+    # 填充每轮的 context 增长率
+    for t in turns:
+        if first_input > 0:
+            t.context_growth_pct = round((t.total_input_tokens - first_input) / first_input * 100, 1)
+        # efficiency_score = cache 命中率 × (1 - stoi/100 的衰减)
+        cache_factor = t.cache_read_tokens / max(t.total_input_tokens, 1)
+        t.efficiency_score = round(cache_factor * (1 - t.stoi_score / 200), 3)
+
+    # 整体膨胀：用最大 context 值 vs 首轮（不用最后一轮，防止最后是短任务）
+    if first_input > 0 and len(inputs) > 1:
+        max_input = max(inputs)
+        analysis.context_bloat_pct = round((max_input - first_input) / first_input * 100, 1)
+
+    # 平均效率分
+    eff_scores = [t.efficiency_score for t in turns if not t.stoi_score == 0 or t.turn_index > 0]
+    analysis.avg_efficiency_score = round(sum(eff_scores) / len(eff_scores), 3) if eff_scores else 0.0
+
+    # 劣化时间线：找效率开始持续下降的拐点（参考调研的 degradation timeline）
+    if len(eff_scores) >= 4:
+        window = 3
+        for i in range(window, len(eff_scores)):
+            recent_avg  = sum(eff_scores[i-window:i]) / window
+            early_avg   = sum(eff_scores[:window]) / window
+            if recent_avg < early_avg * 0.7 and analysis.degradation_turn == -1:
+                analysis.degradation_turn = i
+
+    # ── compress-and-test 估算（不重跑，基于历史 context 增长比例）────────────
+    # 参考调研：LLMLingua 压缩到 1/4 tokens，RAG 性能不降反升 21.4%
+    # 我们做保守估算：压缩 50% 历史 context，质量损失约 5-10%
+    if analysis.context_bloat_pct > 100 and first_input > 0:
+        # 估算压缩节省量
+        compressible = analysis.total_input_tokens - first_input * len(turns)
+        compress_50_saving = max(0, int(compressible * 0.5))
+        analysis.compress_saving_estimate = {
+            "compression_ratio": 0.5,
+            "tokens_saved":      compress_50_saving,
+            "pct_saved":         round(compress_50_saving / analysis.total_input_tokens * 100, 1),
+            "quality_risk":      "低（参考 LLMLingua: 压缩至1/4仍+21.4%准确率）",
+            "action":            f"在第 {len(turns)//2} 轮后运行 /compact，或将长任务拆为多个 session",
+        }
 
     # ── L1 语法层：tool input 格式冗余 ───────────────────────────────────────
     json_heavy_tools = []
