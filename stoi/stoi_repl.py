@@ -132,7 +132,7 @@ def _speak_percent_zh(score: float) -> str:
 
 
 def _broadcast_stoi_score(score: float) -> None:
-    from stoi_config import load_config
+    from .stoi_config import load_config
 
     cfg = load_config()
     tts_cfg = cfg.get("tts", {})

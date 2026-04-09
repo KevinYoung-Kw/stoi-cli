@@ -924,10 +924,12 @@ def get_global_efficiency_report() -> dict:
     }
 
 
-def _get_project_stats(top: int = 5) -> list[dict]:
+def _get_project_stats(top: int = 5) -> list:
     """
-    按项目分组统计 session 数量和大小。
+    按项目分组统计 session 数量和大小，并通过采样最大 session 估算每项目 STOI 分。
     项目 = ~/.claude/projects/ 下的目录名（对应工作目录路径）
+
+    Feature 3: 新增 stoi_score 字段，通过采样最大 session 的前 20 轮估算。
     """
     base = Path("~/.claude/projects").expanduser()
     if not base.exists():
@@ -945,15 +947,48 @@ def _get_project_stats(top: int = 5) -> list[dict]:
         # 把目录名还原为路径（-Users-kevinyoung-Desktop-xxx → ~/Desktop/xxx）
         readable = proj_dir.name.replace("-", "/").lstrip("/")
         readable = "~/" + "/".join(readable.split("/")[2:]) if "/" in readable else readable
+
+        # 采样最大 session 估算 STOI 分（Feature 3）
+        stoi_score = _sample_project_stoi(sessions)
+
         projects.append({
-            "path":         readable[:40],
-            "dir_name":     proj_dir.name[:30],
-            "sessions":     len(sessions),
+            "path":          readable[:40],
+            "dir_name":      proj_dir.name[:30],
+            "sessions":      len(sessions),
             "total_size_mb": round(total_size / 1024 / 1024, 1),
-            "latest_mtime": latest_mtime,
+            "latest_mtime":  latest_mtime,
+            "stoi_score":    stoi_score,   # float 0-100，-1 = 无数据
         })
 
     return sorted(projects, key=lambda x: x["total_size_mb"], reverse=True)[:top]
+
+
+def _sample_project_stoi(sessions: list, max_turns: int = 20) -> float:
+    """
+    采样项目中最大的 session，计算前 max_turns 轮的平均 STOI 分。
+    返回 0.0-100.0，-1.0 表示无法计算。
+    """
+    if not sessions:
+        return -1.0
+
+    # 选最大的 session 文件
+    largest = max(sessions, key=lambda f: f.stat().st_size)
+
+    try:
+        raw_turns = parse_claude_code(largest)
+        if not raw_turns:
+            return -1.0
+
+        # 计算每轮 cache score
+        turns = [_calc_cache_score(t) for t in raw_turns[:max_turns]]
+        scored = [t for t in turns if not t.is_stub and not t.is_baseline]
+        if not scored:
+            return -1.0
+
+        avg = sum(t.stoi_score for t in scored) / len(scored)
+        return round(avg, 1)
+    except Exception:
+        return -1.0
 
 
 def _detect_repeat_messages(window_minutes: int = 5) -> int:

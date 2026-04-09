@@ -93,6 +93,10 @@ class ChainAnalysis:
     l4_output_issues:    list[dict] = field(default_factory=list)
     # 可操作建议
     actionable_fixes:    list[dict] = field(default_factory=list)
+    # 工具调用频率分布（Feature 2）
+    tool_frequency:      dict = field(default_factory=dict)   # {tool_name: count}
+    tool_result_sizes:   dict = field(default_factory=dict)   # {tool_name: avg_tokens}
+    largest_tool_result: dict = field(default_factory=dict)   # {"name": str, "tokens": int, "turn": int}
 
 
 # ── 简单 Token 估算 ──────────────────────────────────────────────────────────
@@ -374,6 +378,11 @@ def analyze_chain(turns: list[ChainTurn], session_name: str = "") -> ChainAnalys
     # ── L2 语义层：tool result 冗余 ───────────────────────────────────────────
     large_results = []
     repeated_tools = {}
+    # 工具调用频率统计（Feature 2）
+    tool_freq = {}         # {tool_name: count}
+    tool_result_sums = {}  # {tool_name: total_tokens}
+    tool_result_cnts = {}  # {tool_name: count_of_results_with_tokens}
+    largest_result = {}    # {"name": str, "tokens": int, "turn": int}
 
     for turn in turns:
         for tr in turn.tool_results:
@@ -387,6 +396,40 @@ def analyze_chain(turns: list[ChainTurn], session_name: str = "") -> ChainAnalys
         # 统计工具调用频次
         for tc in turn.tool_calls:
             repeated_tools[tc.name] = repeated_tools.get(tc.name, 0) + 1
+            tool_freq[tc.name] = tool_freq.get(tc.name, 0) + 1
+
+    # 统计每个工具的 result tokens（通过 tool_id 匹配）
+    # 先建立 tool_id → tool_name 映射
+    tool_id_to_name = {}
+    for turn in turns:
+        for tc in turn.tool_calls:
+            if tc.tool_id:
+                tool_id_to_name[tc.tool_id] = tc.name
+
+    # 统计 result tokens 并找最大 result
+    for turn in turns:
+        for tr in turn.tool_results:
+            name = tool_id_to_name.get(tr.tool_id, "")
+            if name:
+                tool_result_sums[name] = tool_result_sums.get(name, 0) + tr.output_tokens
+                tool_result_cnts[name] = tool_result_cnts.get(name, 0) + 1
+            if tr.output_tokens > largest_result.get("tokens", 0):
+                largest_result = {
+                    "name":   name or "unknown",
+                    "tokens": tr.output_tokens,
+                    "turn":   turn.turn_index,
+                }
+
+    # 计算平均 result tokens
+    tool_result_avgs = {}
+    for name, total in tool_result_sums.items():
+        cnt = tool_result_cnts.get(name, 1)
+        tool_result_avgs[name] = round(total / cnt) if cnt > 0 else 0
+
+    # 把写入 analysis
+    analysis.tool_frequency      = dict(sorted(tool_freq.items(), key=lambda x: x[1], reverse=True))
+    analysis.tool_result_sizes   = tool_result_avgs
+    analysis.largest_tool_result = largest_result
 
     if large_results:
         total_large = sum(r["tokens"] for r in large_results)
@@ -565,6 +608,28 @@ def render_chain_report(analysis: ChainAnalysis) -> None:
                 f"[{score_color}]{t.stoi_score:.0f}%[/{score_color}]",
             )
         console.print(table)
+        console.print()
+
+    # 工具调用分布（Feature 2）
+    if analysis.tool_frequency:
+        console.print(f"  [bold white]工具调用分布[/bold white]")
+        console.print()
+        max_count = max(analysis.tool_frequency.values()) if analysis.tool_frequency else 1
+        # 找 avg_tokens 最大的工具（显示 ← 最大 标注）
+        largest_name = analysis.largest_tool_result.get("name", "")
+        largest_tokens = analysis.largest_tool_result.get("tokens", 0)
+        for tool_name, count in list(analysis.tool_frequency.items())[:8]:
+            bar_w = max(1, int(count / max_count * 12))
+            bar = "█" * bar_w
+            avg_tok = analysis.tool_result_sizes.get(tool_name, 0)
+            avg_str = f"{avg_tok:,}" if avg_tok > 0 else "0"
+            largest_marker = ""
+            if tool_name == largest_name and largest_tokens > 0:
+                largest_marker = f"  [dim]← 最大 ({largest_tokens:,} tokens at 轮{analysis.largest_tool_result.get('turn',0)+1})[/dim]"
+            console.print(
+                f"  [dim]{tool_name:<14}[/dim] [#FFB800]{bar:<12}[/#FFB800] "
+                f"[white]{count:>3}[/white] 次  [dim]avg_result: {avg_str} tokens[/dim]{largest_marker}"
+            )
         console.print()
 
     # 可操作建议

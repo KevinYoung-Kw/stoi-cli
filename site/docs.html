@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>STOI 原理 — 文档</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -97,20 +100,20 @@
     </section>
 
     <section class="section">
-      <h2 class="section-title">洛小山四层优化方法论</h2>
-      <p class="section-lead">在链条分析（chain analysis）中，我们进一步把浪费拆成四层，逐层定位、逐层给出可执行建议。</p>
+      <h2 class="section-title">STOI 四层浪费定位法</h2>
+      <p class="section-lead">在链条分析（chain analysis）中，我们把一次对话里的 token 浪费拆成四个层级，逐层定位、逐层给出可执行建议。</p>
 
-      <h3>L1 语法层</h3>
-      <p>JSON 缩进、Markdown 装饰、过度换行等格式 token。建议：工具调用参数使用最小化 JSON，去掉不必要的空格和换行。</p>
+      <h3>L1 输入层 — 精简工具调用的语法噪音</h3>
+      <p>JSON 里多余的缩进、Markdown 装饰符、无意义的换行都会被计入 token。可执行动作：要求 Claude 在工具调用中使用最小化 JSON，去掉不必要的格式字符。</p>
 
-      <h3>L2 语义层</h3>
-      <p>Tool result 内容冗余、重复的 context、过大的文件读取结果。建议：给 Claude Code 添加指令——"grep 结果超过 50 行时只返回文件名"。</p>
+      <h3>L2 结果层 — 压缩冗余的上下文返回</h3>
+      <p>重复的文件内容、过长的 grep 结果、大段未被引用的堆栈信息都会挤占上下文窗口。可执行动作：在 CLAUDE.md 中加入规则——"grep 结果超过 50 行时只返回文件名"。</p>
 
-      <h3>L3 架构层</h3>
-      <p>Cache miss 的根因：动态字段注入（时间戳、UUID、PID、绝对路径）。建议：在 CLAUDE.md 中明确要求过滤掉这些动态内容。</p>
+      <h3>L3 结构层 — 消除破坏缓存的动态字段</h3>
+      <p>System Prompt 或 Tool result 中注入的时间戳、UUID、PID、绝对路径是导致 cache miss 的首要元凶。可执行动作：在 CLAUDE.md 中明确要求过滤掉这些动态内容，或将其移到 user message。</p>
 
-      <h3>L4 输出层</h3>
-      <p>Yapping、不必要的总结、过度解释。建议：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</p>
+      <h3>L4 输出层 — 克制无意义的总结与重复</h3>
+      <p>Yapping、过度解释、已完成任务的冗余总结，都会增加输出长度且对用户无价值。可执行动作：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</p>
     </section>
   </main>
 

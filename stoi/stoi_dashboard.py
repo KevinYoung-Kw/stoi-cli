@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from .stoi_chain import ChainAnalysis, ChainTurn, parse_chain
+from .stoi_tokenizer import analyze_token_importance, render_token_html
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -640,6 +641,14 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
         # api_call_count badge
         api_badge = f'<span style="font-size:10px;color:#8b5cf6;margin-left:4px">×{t.api_call_count}</span>' if t.api_call_count > 1 else ""
 
+        # Token 分析（Feature 4）：LLM 打分 fallback 到 Markdown-only 规则
+        try:
+            _tok_tokens = analyze_token_importance(t.user_text[:500]) if t.user_text else []
+            token_analysis_html = render_token_html(_tok_tokens) if _tok_tokens else \
+                "<span style='color:#9ca3af;font-size:12px'>(无用户文本)</span>"
+        except Exception:
+            token_analysis_html = "<span style='color:#9ca3af;font-size:12px'>(分析失败)</span>"
+
         rows.append(f"""
 <tr id="turn-row-{t.turn_index}" class="turn-row">
   <td class="turn-num">#{t.turn_index + 1}</td>
@@ -683,6 +692,10 @@ def _build_turn_rows(turns: list[ChainTurn], session_path: Path) -> str:
       <div class="detail-section" style="margin-top:10px">
         <div class="detail-label"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:3px"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>Token 用量</div>
         <div>{usage_chips}</div>
+      </div>
+      <div class="detail-section" style="margin-top:10px">
+        <div class="detail-label">🎨 Token 分析  <span style="font-size:10px;font-weight:400;color:#94a3b8">绿=高贡献 红=冗余 灰=低贡献</span></div>
+        <div style="background:white;border:1px solid #e2e8f0;border-radius:4px;padding:10px 12px;">{token_analysis_html}</div>
       </div>
     </div>
   </td>
