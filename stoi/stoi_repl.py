@@ -758,8 +758,7 @@ def _run_overview():
 
 def _run_dashboard():
     """生成可交互的 HTML 分析面板，按需 LLM 分析每轮"""
-    from .stoi_chain import parse_chain, analyze_chain
-    from .stoi_dashboard import generate_dashboard
+    from .stoi_dashboard import prepare_dashboard_html
     import subprocess
 
     session_path = state.current_session
@@ -768,16 +767,23 @@ def _run_dashboard():
         return
 
     console.print()
-    with console.status("[dim]解析链条并生成 dashboard...[/dim]", spinner="dots"):
-        turns = parse_chain(Path(session_path), max_turns=50)
-        if not turns:
+    with console.status("[dim]准备 dashboard...[/dim]", spinner="dots"):
+        try:
+            html_path, cache_hit, meta = prepare_dashboard_html(
+                Path(session_path),
+                max_turns=50,
+                session_name=Path(session_path).name[:30],
+            )
+        except ValueError:
             console.print("  [yellow]session 为空或无法解析[/yellow]")
             return
-        analysis = analyze_chain(turns, Path(session_path).name[:30])
-        html_path = generate_dashboard(analysis, Path(session_path))
 
-    console.print(f"  [green]✅ Dashboard 已生成[/green]: {html_path}")
-    console.print(f"  [dim]{len(turns)} 轮对话，点击 [🔍 分析] 按钮即可触发 LLM 分析[/dim]")
+    if cache_hit:
+        console.print(f"  [cyan]♻ 45 分钟内已生成过 Dashboard，直接复用[/cyan]: {html_path}")
+    else:
+        console.print(f"  [green]✅ Dashboard 已生成[/green]: {html_path}")
+    if meta.get("turn_count"):
+        console.print(f"  [dim]{meta['turn_count']} 轮对话，点击 [🔍 分析] 按钮即可触发 LLM 分析[/dim]")
     subprocess.Popen(["open", str(html_path)])
     console.print()
 

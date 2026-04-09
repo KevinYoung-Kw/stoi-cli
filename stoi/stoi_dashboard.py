@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -29,8 +30,145 @@ from typing import Optional
 from .stoi_chain import ChainAnalysis, ChainTurn, parse_chain
 from .stoi_tokenizer import analyze_token_importance, render_token_html
 
+_DASHBOARD_CACHE_TTL_SECONDS = 45 * 60
+_DASHBOARD_CACHE_FILENAME = "dashboard_cache.json"
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _dashboard_output_dir() -> Path:
+    out_dir = Path("~/.stoi").expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
+def _dashboard_cache_path() -> Path:
+    return _dashboard_output_dir() / _DASHBOARD_CACHE_FILENAME
+
+
+def _default_session_name(session_path: Path) -> str:
+    return session_path.parent.name[:20] + "/" + session_path.stem[:16]
+
+
+def _session_cache_key(session_path: Path) -> str:
+    return str(Path(session_path).expanduser().resolve())
+
+
+def _load_dashboard_cache() -> dict:
+    cache_path = _dashboard_cache_path()
+    if not cache_path.exists():
+        return {"version": 1, "sessions": {}}
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": 1, "sessions": {}}
+    if not isinstance(data, dict):
+        return {"version": 1, "sessions": {}}
+    sessions = data.get("sessions")
+    if not isinstance(sessions, dict):
+        data["sessions"] = {}
+    data.setdefault("version", 1)
+    return data
+
+
+def _save_dashboard_cache(cache: dict) -> None:
+    cache_path = _dashboard_cache_path()
+    cache_path.write_text(
+        json.dumps(cache, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _get_cached_dashboard(session_path: Path) -> Optional[dict]:
+    session_path = Path(session_path).expanduser().resolve()
+    cache = _load_dashboard_cache()
+    entry = cache.get("sessions", {}).get(_session_cache_key(session_path))
+    if not isinstance(entry, dict):
+        return None
+
+    html_path_str = entry.get("html_path")
+    created_at = entry.get("created_at")
+    if not html_path_str or not isinstance(created_at, (int, float)):
+        return None
+
+    html_path = Path(html_path_str).expanduser()
+    if not html_path.exists():
+        return None
+
+    if time.time() - created_at > _DASHBOARD_CACHE_TTL_SECONDS:
+        return None
+
+    return {
+        "html_path": html_path,
+        "created_at": created_at,
+        "turn_count": entry.get("turn_count"),
+        "session_name": entry.get("session_name", ""),
+    }
+
+
+def _update_dashboard_cache(
+    session_path: Path,
+    html_path: Path,
+    *,
+    turn_count: int,
+    session_name: str,
+) -> None:
+    session_path = Path(session_path).expanduser().resolve()
+    html_path = Path(html_path).expanduser().resolve()
+
+    cache = _load_dashboard_cache()
+    sessions = cache.setdefault("sessions", {})
+    sessions[_session_cache_key(session_path)] = {
+        "html_path": str(html_path),
+        "created_at": time.time(),
+        "turn_count": turn_count,
+        "session_name": session_name,
+    }
+    _save_dashboard_cache(cache)
+
+
+def prepare_dashboard_html(
+    session_path: Path,
+    *,
+    max_turns: int = 100,
+    session_name: Optional[str] = None,
+) -> tuple[Path, bool, dict]:
+    """
+    Resolve dashboard HTML for a session, reusing a recent cached file when valid.
+
+    Returns:
+        (html_path, cache_hit, metadata)
+    """
+    session_path = Path(session_path).expanduser().resolve()
+    cached = _get_cached_dashboard(session_path)
+    if cached:
+        return cached["html_path"], True, {
+            "turn_count": cached.get("turn_count"),
+            "session_name": cached.get("session_name", ""),
+            "created_at": cached.get("created_at"),
+        }
+
+    turns = parse_chain(session_path, max_turns=max_turns)
+    if not turns:
+        raise ValueError("session 为空或无法解析")
+
+    from .stoi_chain import analyze_chain
+
+    resolved_session_name = session_name or _default_session_name(session_path)
+    analysis = analyze_chain(turns, resolved_session_name)
+    html_path = generate_dashboard(analysis, session_path)
+    _update_dashboard_cache(
+        session_path,
+        html_path,
+        turn_count=len(turns),
+        session_name=resolved_session_name,
+    )
+    return html_path, False, {
+        "turn_count": len(turns),
+        "session_name": resolved_session_name,
+        "created_at": time.time(),
+    }
+
 
 def _h(text: str) -> str:
     """HTML-escape a string."""
@@ -916,8 +1054,7 @@ const TURN_DATA    = {json.dumps(turn_data)};
 </body>
 </html>"""
 
-    out_dir = Path("~/.stoi").expanduser()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = _dashboard_output_dir()
 
     safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", analysis.session_name)[:40]
     ts_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1219,18 +1356,23 @@ def generate_and_serve_dashboard(session_path: Optional[Path] = None) -> None:
     session_path = Path(session_path)
     c.print(f"\n  [dim]解析 session: {session_path.name}…[/dim]")
 
-    from .stoi_chain import parse_chain, analyze_chain
-    with c.status("[dim]分析链条…[/dim]", spinner="dots"):
-        turns    = parse_chain(session_path, max_turns=100)
-        analysis = analyze_chain(turns, session_path.parent.name[:20] + "/" + session_path.stem[:16])
+    with c.status("[dim]准备 Dashboard…[/dim]", spinner="dots"):
+        try:
+            html_path, cache_hit, meta = prepare_dashboard_html(
+                session_path,
+                max_turns=100,
+                session_name=_default_session_name(session_path),
+            )
+        except ValueError:
+            c.print("  [yellow]session 无可解析的轮次数据[/yellow]")
+            return
 
-    if not turns:
-        c.print("  [yellow]session 无可解析的轮次数据[/yellow]")
-        return
-
-    c.print(f"  [dim]生成 Dashboard HTML…[/dim]")
-    html_path = generate_dashboard(analysis, session_path)
-    c.print(f"  [green]✅ HTML 已生成:[/green] {html_path}")
+    if cache_hit:
+        c.print(f"  [cyan]♻ 复用 45 分钟内缓存的 Dashboard[/cyan]: {html_path}")
+    else:
+        c.print(f"  [green]✅ HTML 已生成[/green]: {html_path}")
+    if meta.get("turn_count"):
+        c.print(f"  [dim]{meta['turn_count']} 轮对话[/dim]")
 
     serve_dashboard(html_path, open_browser=True)
 
