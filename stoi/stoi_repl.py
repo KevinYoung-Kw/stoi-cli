@@ -134,7 +134,7 @@ def _speak_percent_zh(score: float) -> str:
     return spoken
 
 
-def _broadcast_stoi_score(score: float) -> None:
+def _broadcast_stoi_score(score: float, prefix: str = "含屎量") -> None:
     from .stoi_config import load_config
 
     cfg = load_config()
@@ -147,7 +147,7 @@ def _broadcast_stoi_score(score: float) -> None:
         return
 
     voice = tts_cfg.get("voice") or "Ting-Ting"
-    message = f"含屎量百分之{_speak_percent_zh(score)}"
+    message = f"{prefix}百分之{_speak_percent_zh(score)}"
     cmd = [say_bin, message]
     if voice:
         cmd = [say_bin, "-v", voice, message]
@@ -679,17 +679,31 @@ def _run_overview():
     hit  = r["global_hit_rate"]
     color_map = {(0,30): "green", (30,50): "yellow", (50,75): "dark_orange", (75,101): "red"}
     color = next((c for (lo,hi),c in color_map.items() if lo <= stoi < hi), "white")
-    emoji = "✅" if stoi < 30 else "🟡" if stoi < 50 else "🟠" if stoi < 75 else "💩"
+    poop_count = 0
+    if stoi > 90:
+        poop_count = 5
+    elif stoi > 70:
+        poop_count = 4
+    elif stoi > 50:
+        poop_count = 3
+    elif stoi > 40:
+        poop_count = 2
+    elif stoi >= 30:
+        poop_count = 1
+    poop_badges = ""
+    if poop_count:
+        poop_badges = " " + " ".join("💩" for _ in range(poop_count))
 
     console.print(f"  [bold #FFB800]💩 STOI 全局报告[/bold #FFB800]  [dim]基于 {r['total_sessions']} 个 session，{r['total_messages']:,} 条消息[/dim]")
     console.print()
 
     # 核心数字
-    console.print(f"  [dim]全局含屎量[/dim]   [{color}]{stoi:.1f}% {emoji}[/{color}]")
+    console.print(f"  [dim]全局含屎量[/dim]   [{color}]{stoi:.1f}%{poop_badges}[/{color}]")
     console.print(f"  [dim]缓存命中率[/dim]   [white]{hit:.1f}%[/white]  [dim]（命中越高越省钱）[/dim]")
     console.print(f"  [dim]平均 session 长度[/dim]  [white]{r['avg_session_len']:.0f}[/white] 条消息")
     console.print(f"  [dim]重复发送消息[/dim]  [yellow]{r['repeat_messages']}[/yellow] 条  [dim]（5分钟内重发同一条）[/dim]")
     console.print()
+    _broadcast_stoi_score(stoi, prefix="全局含屎量")
 
     # 模型使用情况
     console.print(f"  [bold white]模型使用效率[/bold white]")
