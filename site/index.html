@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>(function(){var s=localStorage.getItem('theme'),d=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-theme',s||(d?'dark':'light'));})();</script>
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
@@ -68,133 +69,210 @@
 
     <main class="main-content">
       <div id="content-root">
-        <div class="content-wrapper">
-          <section class="hero">
-            <div class="hero-badge">
+
+        <!-- Hero -->
+        <section class="landing-hero">
+          <div class="hero-orb hero-orb-1"></div>
+          <div class="hero-orb hero-orb-2"></div>
+          <div class="hero-orb hero-orb-3"></div>
+          <div class="hero-content">
+            <div class="hero-badge reveal">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
               开源 CLI 工具 · 首个多轮 Token 效率审计
             </div>
-            <img class="hero-poster" src="../assets/images/poster.jpg" alt="STOI 含屎量分析">
-            <h1 class="hero-title">让每一个 Token 花得值</h1>
-            <p class="hero-subtitle">Shit Token On Investment</p>
-            <p class="hero-lead">我们是业界首个多轮维度的 Token 效率分析工具，专注于量化 AI 编程工具的投资回报率。支持词法层、语义层、架构层、输出层四维分析，让你知道每一个 Token 花得值不值。</p>
-            <div class="btn-group">
+            <h1 class="hero-title-kinetic reveal reveal-delay-1">
+              <span class="title-line">让每一个</span>
+              <span class="title-line accent">Token</span>
+              <span class="title-line">花得值</span>
+            </h1>
+            <p class="hero-subtitle-kinetic reveal reveal-delay-2">Shit Token On Investment</p>
+            <div class="hero-visual reveal reveal-delay-2">
+              <img src="../assets/images/poster.jpg" alt="STOI 含屎量分析">
+            </div>
+            <div class="hero-cta reveal reveal-delay-3">
               <a class="btn btn-primary" href="./docs.html" data-pjax>阅读分析原理</a>
               <a class="btn btn-secondary" href="./cli.html" data-pjax>查看 CLI 文档</a>
             </div>
-          </section>
+          </div>
+          <div class="hero-scroll-hint reveal reveal-delay-4">
+            <span>向下滚动，了解 STOI 的故事</span>
+            <div class="scroll-arrow"></div>
+          </div>
+        </section>
 
-          <section class="founder-card">
-            <div class="founder-header">
-              <img class="founder-avatar" src="../assets/images/logo.png" alt="">
-              <div class="founder-meta">
-                <div class="founder-name">STOI 团队</div>
-                <div class="founder-role">一个刻薄但可靠的审计师</div>
+        <!-- Philosophy Quote -->
+        <section class="landing-section quote-section">
+          <div class="quote-content">
+            <div class="quote-mark reveal">"</div>
+            <p class="quote-text reveal reveal-delay-1">
+              在这个 AI 狂飙的时代，<br>
+              <strong>用得多 ≠ 产得好。</strong>
+            </p>
+            <p class="quote-body reveal reveal-delay-2">
+              我们每天都在和 Claude Code 对话，但很少有人停下来问自己：<br class="hide-mobile">
+              刚才那一轮，有多少 token 是被浪费的？
+            </p>
+            <div class="quote-signature reveal reveal-delay-3">
+              <img src="../assets/images/logo.png" alt="">
+              <div>
+                <div class="sig-name">STOI 团队</div>
+                <div class="sig-role">一个刻薄但可靠的审计师</div>
               </div>
             </div>
-            <p>在这个 AI 狂飙的时代，<strong>用得多 ≠ 产得好</strong>。我们每天都在和 Claude Code 对话，但很少有人停下来问自己：刚才那一轮，有多少 token 是被浪费的？</p>
-            <p>STOI 的诞生，就是想让这种「无意识烧钱」变得可见。我们不只告诉你"含屎量 60%"，还会像一位资深工程师一样，指出具体哪一行 System Prompt 在破坏缓存、哪一段 Tool Result 在膨胀上下文、哪一句输出属于无意义的 Yapping。</p>
-            <p class="handwritten" style="color:var(--accent);font-size:1.05rem;margin-top:0.8rem">我们的信条：只给可执行的建议，不说正确的废话。</p>
-          </section>
+          </div>
+        </section>
 
-          <h2>你在无意识烧钱的 3 个信号</h2>
-          <p class="section-intro">如果你在使用 Claude Code 时遇到过以下情况，你的 token 效率大概率正在「含屎」。</p>
-
-          <div class="bento">
-            <div class="bento-item">
-              <div class="bento-stat">0%</div>
-              <p>多轮对话中 <code>cache_read_input_tokens</code> 始终为 0。这意味着 System Prompt 或 Tools 中存在动态字段（时间戳 / UUID / 绝对路径），导致 Anthropic 的精确前缀匹配完全失效。</p>
+        <!-- The Problem -->
+        <section class="landing-section problem-section">
+          <div class="problem-content">
+            <div class="problem-header reveal">
+              <span class="problem-label">THE PROBLEM</span>
+              <h2 class="problem-title">
+                你在<br><span class="text-gradient-fire">无意识烧钱</span>
+              </h2>
             </div>
-            <div class="bento-item">
-              <div class="bento-stat">40%</div>
-              <p>4000+ token 的上下文中，约 30–40% 的内容可被安全删除而不损失质量。开发者习惯性地将完整历史全量追加，而非筛选与当前问题相关的片段。</p>
+            <div class="problem-visual reveal reveal-delay-1">
+              <div class="burn-stat">
+                <div class="burn-number" data-target="0">0</div>
+                <div class="burn-unit">%</div>
+              </div>
+              <p class="burn-caption">多轮对话中 cache_read_input_tokens 始终为 0</p>
             </div>
-            <div class="bento-item span-2">
-              <div class="bento-stat">↑ 线性增长</div>
-              <p>成本随对话轮数持续上升，没有出现平台期。通常是因为没有使用 /compact 压缩历史，也没有采用滑动窗口策略。提示缓存的写入成本是正常价格的 1.25 倍，如果每轮都重新写，省下来的钱会被消耗殆尽。</p>
+            <div class="problem-detail reveal reveal-delay-2">
+              <p>System Prompt 中一个字符的变动（时间戳从 14:32:15 变成 14:32:16），就足以让 Anthropic 的精确前缀匹配完全失效。你支付的是 100% 的价格，换来的却是 0% 的缓存收益。</p>
             </div>
           </div>
+          <div class="problem-glow"></div>
+        </section>
 
-          <h2>STOI 的三分层内核</h2>
-          <p class="section-intro">我们不会给你一个模糊的好/坏评分。STOI 将会话效率拆成三个可观测、可干预的维度，逐层定位根因。</p>
-
-          <div class="bento bento-3">
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></div>
-              <h4>L1 Cache Efficiency</h4>
+        <!-- Three Layers -->
+        <section class="landing-section layers-section">
+          <div class="layers-header reveal">
+            <span class="section-label">PHILOSOPHY</span>
+            <h2 class="section-title">三分层内核</h2>
+            <p class="section-subtitle">不给你模糊的「好/坏」评分，而是将效率拆成三个可观测、可干预的维度</p>
+          </div>
+          <div class="layers-grid">
+            <div class="layer-card reveal reveal-delay-1">
+              <div class="layer-number">01</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+              </div>
+              <h3>Cache Efficiency</h3>
               <p>前缀稳定性决定 KV Cache 命中率。命中一次，读取价格仅为正常的 10%。STOI 会帮你找出破坏精确前缀匹配的动态字段。</p>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></div>
-              <h4>L2 Feedback Validity</h4>
+            <div class="layer-card reveal reveal-delay-2">
+              <div class="layer-number">02</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+              </div>
+              <h3>Feedback Validity</h3>
               <p>输出再长，如果用户没有采纳（没有改文件、没有执行命令），就是无效 token。我们用规则 + 可选 LLM 判断标注每一轮的有效性。</p>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
-              <h4>L3 Cost Breakdown</h4>
-              <p>将 cache 命中/未命中的价格差异、有效/无效输出占比，换算成实际美元。你会看到自己的"真实成本"和"若无缓存时的成本"。</p>
+            <div class="layer-card reveal reveal-delay-3">
+              <div class="layer-number">03</div>
+              <div class="layer-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+              <h3>Cost Breakdown</h3>
+              <p>将 cache 命中/未命中的价格差异、有效/无效输出占比，换算成实际美元。你会看到自己的「真实成本」和「若无缓存时的成本」。</p>
             </div>
           </div>
+        </section>
 
-          <h2>STOI 四层浪费定位法</h2>
-          <p class="section-intro">在链条分析（chain analysis）中，我们把一次对话里的 token 浪费拆成四个层级，逐层给出可执行建议。</p>
-
-          <div class="bento bento-4">
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
-              <h4>L1 输入层</h4>
-              <p>JSON 里多余的缩进、Markdown 装饰符、无意义的换行。建议：使用最小化 JSON，去掉不必要的格式字符。</p>
+        <!-- Four Layers Method -->
+        <section class="landing-section method-section">
+          <div class="method-header reveal">
+            <span class="section-label">METHODOLOGY</span>
+            <h2 class="section-title">四层浪费定位法</h2>
+            <p class="section-subtitle">像外科医生一样，逐层定位对话里的 token 浪费</p>
+          </div>
+          <div class="method-track">
+            <div class="method-step reveal">
+              <div class="step-dot">L1</div>
+              <div class="step-content">
+                <h4>输入层</h4>
+                <p>JSON 缩进、Markdown 装饰符、无意义换行。</p>
+              </div>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-              <h4>L2 结果层</h4>
-              <p>重复的 context、过长的 grep 结果。建议：在 CLAUDE.md 中加入规则——"grep 超过 50 行时只返回文件名"。</p>
+            <div class="method-connector reveal reveal-delay-1"></div>
+            <div class="method-step reveal reveal-delay-1">
+              <div class="step-dot">L2</div>
+              <div class="step-content">
+                <h4>结果层</h4>
+                <p>重复 context、过长的 grep 结果。</p>
+              </div>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><line x1="9" x2="9" y1="21" y2="9"/></svg></div>
-              <h4>L3 结构层</h4>
-              <p>时间戳、UUID、PID、绝对路径导致 cache miss。建议：将这些动态内容移到 user message，保持 system prompt 静态。</p>
+            <div class="method-connector reveal reveal-delay-2"></div>
+            <div class="method-step reveal reveal-delay-2">
+              <div class="step-dot">L3</div>
+              <div class="step-content">
+                <h4>结构层</h4>
+                <p>时间戳、UUID、PID 导致 cache miss。</p>
+              </div>
             </div>
-            <div class="bento-item">
-              <div class="bento-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
-              <h4>L4 输出层</h4>
-              <p>Yapping、过度解释、冗余总结。建议：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事"。</p>
+            <div class="method-connector reveal reveal-delay-3"></div>
+            <div class="method-step reveal reveal-delay-3">
+              <div class="step-dot">L4</div>
+              <div class="step-content">
+                <h4>输出层</h4>
+                <p>Yapping、过度解释、冗余总结。</p>
+              </div>
             </div>
           </div>
+        </section>
 
-          <h2>Before / After</h2>
-          <p class="section-intro">一个典型的 Claude Code 会话，在 STOI 介入前后的对比。</p>
-
-          <div class="compare">
-            <div class="compare-box negative">
-              <h4>Before · 无优化</h4>
-              <p>System prompt 中注入当前时间戳和进程 ID，导致每一轮 cache 完全失效。</p>
-              <p>对话历史无限追加，第 12 轮上下文膨胀到 8000+ tokens。</p>
-              <p>模型每轮输出都带有一段"总结已完成操作"的废话。</p>
+        <!-- Before / After -->
+        <section class="landing-section transform-section">
+          <div class="transform-header reveal">
+            <span class="section-label">TRANSFORMATION</span>
+            <h2 class="section-title">Before / After</h2>
+            <p class="section-subtitle">一个典型 Claude Code 会话，在 STOI 介入前后的对比</p>
+          </div>
+          <div class="transform-stage">
+            <div class="transform-card negative reveal">
+              <div class="transform-status">
+                <span class="status-dot"></span>
+                Before · 无优化
+              </div>
+              <h3>成本随轮数<br>线性增长</h3>
+              <ul>
+                <li>System prompt 注入动态时间戳，cache 完全失效</li>
+                <li>第 12 轮上下文膨胀到 8000+ tokens</li>
+                <li>模型每轮输出都附带冗余总结</li>
+              </ul>
             </div>
-            <div class="compare-box positive">
-              <h4>After · 有 STOI</h4>
-              <p>移除 system prompt 中的动态字段，cache 命中率从 0% 提升到 90%+。</p>
-              <p>在第 8 轮执行 <code>/compact</code>，后续轮次始终保持在 3500 tokens 以内。</p>
-              <p>在 CLAUDE.md 中禁用了自动总结，平均每轮节省 200–400 tokens。</p>
+            <div class="transform-arrow reveal reveal-delay-1">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+            <div class="transform-card positive reveal reveal-delay-2">
+              <div class="transform-status">
+                <span class="status-dot"></span>
+                After · 有 STOI
+              </div>
+              <h3>成本进入<br>平台期</h3>
+              <ul>
+                <li>移除动态字段，cache 命中率提升至 90%+</li>
+                <li>执行 <code>/compact</code>，维持 3500 tokens 以内</li>
+                <li>禁用自动总结，每轮节省 200–400 tokens</li>
+              </ul>
             </div>
           </div>
+        </section>
 
-          <div class="callout">
-            <p><strong>关键洞察：</strong> 缓存失效往往不是因为上下文变长，而是因为 system prompt、tools 或 messages 的细微变化导致<strong>精确前缀匹配</strong>失败。一次 cache miss 可能导致 25–50% 的成本增加。</p>
+        <!-- CTA -->
+        <section class="landing-section cta-section">
+          <div class="cta-glow"></div>
+          <img class="cta-banner reveal" src="../assets/images/banner.jpg" alt="STOI">
+          <h2 class="cta-title reveal reveal-delay-1">准备好审计你的<br><span class="accent">Token 效率</span>了吗？</h2>
+          <p class="cta-lead reveal reveal-delay-2">一行命令安装，即刻分析你最近的 Claude Code session。</p>
+          <div class="btn-group reveal reveal-delay-3">
+            <a class="btn btn-primary btn-large" href="./cli.html" data-pjax>查看安装指南</a>
+            <a class="btn btn-secondary btn-large" href="./docs.html" data-pjax>深入了解原理</a>
           </div>
+        </section>
 
-          <div class="cta-box">
-            <h3>准备好审计你的 Token 效率了吗？</h3>
-            <p>一行命令安装，即刻分析你最近的 Claude Code session。</p>
-            <div class="btn-group">
-              <a class="btn btn-primary" href="./cli.html" data-pjax>查看安装指南</a>
-              <a class="btn btn-secondary" href="./docs.html" data-pjax>深入了解原理</a>
-            </div>
-          </div>
-        </div>
-
-        <footer class="site-footer">
+        <footer class="site-footer landing-footer">
           <div class="footer-links">
             <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
             <a href="./docs.html" data-pjax>文档</a>
@@ -203,6 +281,7 @@
           <p class="footer-copy">© 2025 stoi-cli · 让每一个 Token 花得值</p>
           <p class="footer-zicha handwritten">由于时间原因，这个 STOI 本身也是个 SHIT。</p>
         </footer>
+
       </div>
     </main>
   </div>

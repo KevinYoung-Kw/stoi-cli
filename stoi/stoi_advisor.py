@@ -68,8 +68,46 @@ def search_knowledge(topic: str) -> str:
     return kb_file.read_text(encoding="utf-8")
 
 
-def _build_analysis_summary(report) -> str:
-    """把 STOIReport 转成 LLM 可读的摘要，包含真实对话片段"""
+
+def _get_chain_analysis(report) -> tuple[str, str]:
+    """运行链式分析，返回可操作建议和 worst tool call 样本"""
+    path = getattr(report, "session_path", None)
+    if not path or not path.exists():
+        return "", ""
+    try:
+        from .stoi_chain import parse_chain, analyze_chain
+        chain_turns = parse_chain(path, max_turns=30)
+        if not chain_turns:
+            return "", ""
+        analysis = analyze_chain(chain_turns, path.name[:30])
+        fixes_text = ""
+        if analysis.actionable_fixes:
+            fixes_text = "\n".join(
+                f"- [{f['layer']}] {f['action']}\n  修复: {f['fix']}\n  收益: {f['saving']}"
+                for f in analysis.actionable_fixes[:4]
+            )
+        # 找 tool call 最多的轮次作为样本
+        worst_tool = ""
+        worst_turns = sorted(
+            [t for t in chain_turns if t.tool_calls],
+            key=lambda t: sum(len(tc.input_str) for tc in t.tool_calls),
+            reverse=True,
+        )[:2]
+        for t in worst_turns:
+            worst_tool += f"\n  [轮{t.turn_index}]\n"
+            for tc in t.tool_calls[:3]:
+                worst_tool += f"    工具: {tc.name}\n"
+                worst_tool += f"    输入: {tc.input_str[:200]}{'...' if len(tc.input_str) > 200 else ''}\n"
+            for tr in t.tool_results[:2]:
+                worst_tool += f"    结果长度: {tr.output_tokens:,} tokens\n"
+                worst_tool += f"    结果预览: {tr.content[:180]}{'...' if len(tr.content) > 180 else ''}\n"
+        return fixes_text, worst_tool
+    except Exception:
+        return "", ""
+
+
+def _build_analysis_summary(report, chain_fixes: str = "", chain_tools: str = "") -> str:
+    """把 STOIReport 转成 LLM 可读的摘要，包含真实对话片段和链式分析数据"""
     scored = [t for t in report.turns
               if not t.is_stub and not t.is_baseline and t.role == "assistant"]
 
@@ -142,6 +180,12 @@ def _build_analysis_summary(report) -> str:
 
 **被用户否定的轮次**{invalid_samples or "  无（或无法判断）"}
 
+**链式分析 — 可操作建议**
+{chain_fixes or "  无额外建议"}
+
+**问题工具调用样本**
+{chain_tools or "  无"}
+
 ---
 **用户场景**: Claude Code 用户（AI 辅助编程工具）
 **用户能控制的**:
@@ -156,13 +200,17 @@ def _build_analysis_summary(report) -> str:
 - KV Cache 底层配置
 - 向量数据库、RAG、embedding 等
 
-**重要**: 该 session 有效输出率为 {report.effectiveness_rate:.0f}%，这个数字**不代表实际有效性**——Claude Code 的对话内容在工具结果里，LLM 读不到实际代码输出。忽略这个指标，专注 Cache 效率和上下文膨胀。
+**重要**: 
+1. 该 session 有效输出率为 {report.effectiveness_rate:.0f}%，这个数字**不代表实际有效性**——Claude Code 的对话内容在工具结果里。忽略这个指标。
+2. **禁止套用知识库模板**。不要给出“上下文膨胀严重”、“关键信息被淹没”、“CLAUDE.md 文件过大”这类泛泛而谈的建议，除非数据（特别是链式分析）明确指向了该问题。
+3. 你的建议必须**直接引用数据中的具体现象**（例如：某轮 tool result 超过 2000 tokens、某次 grep 返回了 500 行结果）。
+4. 如果链式分析已经给出了精确的修复方案（如“在 CLAUDE.md 中加入...”），请直接转述并量化收益。
 
-请用 search_knowledge 查询（只查 claude_code_skills 和 context_engineering），给出 2-3 条 Claude Code 用户**今天能执行**的建议。
+请用 search_knowledge 查询，给出 2-3 条 Claude Code 用户**今天能执行**、**具体且数据驱动**的建议。
 
 格式（每条 4 行以内）:
-**[问题]** 一句话
-**操作**: Claude Code 命令或 CLAUDE.md 配置
+**[问题]** 一句话，必须点出具体数据中的异常点
+**操作**: 具体可执行的 Claude Code 命令或 CLAUDE.md 文案
 **收益**: 量化"""
 
 
@@ -183,20 +231,23 @@ def get_suggestions(report, verbose: bool = False) -> list[str]:
         if not api_key:
             return ["未配置 API Key，运行 stoi config 配置"]
 
-        summary = _build_analysis_summary(report)
+        chain_fixes, chain_tools = _get_chain_analysis(report)
+        summary = _build_analysis_summary(report, chain_fixes, chain_tools)
 
         SYSTEM = """你是 STOI（Shit Token On Investment）Token 效率分析引擎，专门帮助 Claude Code 用户优化 AI 编程工具的 token 消耗。
 
 你的任务：
-1. 分析 STOI 数据，判断主要问题在哪里
-2. 用 search_knowledge 工具查询知识库（优先查 claude_code_skills）
-3. 给出 3 条针对 Claude Code 实际使用场景的具体建议
+1. 分析 STOI 数据（含链式分析中的可操作建议和问题工具调用），判断主要根因
+2. 用 search_knowledge 工具按需查询知识库
+3. 给出 2-3 条针对**当前 session 具体数据**的建议
 
-原则：
-- 建议必须是 Claude Code 用户能直接执行的（如"/compact 命令"、"修改 CLAUDE.md"、"拆分 session"）
-- 不要给"用向量数据库"、"引入 RAG"这种与 Claude Code 无关的建议
-- 如果数据显示某个指标很健康（如含屎量 < 10%），直接说"该指标良好"，不要无谓建议
-- 建议要简洁，每条不超过 5 行"""
+铁律（违反任何一条都会被标为垃圾输出）：
+- **禁止模板化建议**：不要在没有具体数据支撑时说"上下文膨胀严重"、"关键信息被淹没"、"CLAUDE.md 文件过大"。
+- **必须引用具体现象**：每条建议的第一句必须点出一个数据中的具体异常（如"第 48 轮 read_file 返回了 78,965 tokens"、"grep 结果平均 200+ 行"）。
+- **如果链式分析已给出精确修复，优先直接采用**，而不是绕弯子重新发明。
+- 不要给"用向量数据库"、"引入 RAG"这类与 Claude Code 无关的建议。
+- 如果数据显示指标健康（含屎量 < 15%，无明显 tool result 浪费），直接说"当前 session 效率良好，无需优化"。
+- 每条不超过 4 行。"""
 
         messages = [{"role": "user", "content": summary}]
 

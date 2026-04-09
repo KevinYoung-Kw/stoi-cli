@@ -125,6 +125,9 @@ class STOIReport:
     # LLM 建议（可选）
     llm_suggestions: list[str] = field(default_factory=list)
 
+    # 原始会话路径（用于链式分析）
+    session_path: Optional[Path] = None
+
 
 # ── L1: Cache 效率分析 ────────────────────────────────────────────────────────
 SHIT_THRESHOLDS = [
@@ -666,6 +669,7 @@ def analyze(
         total_cache_write=sum(t.cache_write for t in valid_turns),
         total_wasted=sum(t.input_tokens for t in scored_turns),
         turns=turns,
+        session_path=path,
     )
 
     if scored_turns:

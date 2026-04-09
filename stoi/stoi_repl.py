@@ -1067,9 +1067,20 @@ def run():
     def _print_statusbar():
         """底部状态栏 — 简洁、信息丰富"""
         session = state.session_name or "未选择 session"
-        mcp_ok = Path("~/.claude/settings.json").expanduser().exists()
+        mcp_ok = False
+        try:
+            settings = json.loads(Path("~/.claude/settings.json").expanduser().read_text())
+            mcp_servers = settings.get("mcpServers", {})
+            stoi_cfg = mcp_servers.get("stoi", {})
+            if stoi_cfg:
+                cmd = stoi_cfg.get("command", "")
+                args = stoi_cfg.get("args", [])
+                mcp_ok = "stoi" in cmd or any("stoi" in str(a) for a in args)
+        except Exception:
+            mcp_ok = False
         mcp_indicator = "  [green]● MCP[/green]" if mcp_ok else ""
-        console.print(f"  [dim #FFB800]{'─' * 72}[/dim #FFB800]")
+        _sep = "─" * 72
+        console.print(f"  [dim #FFB800]{_sep}[/dim #FFB800]")
         console.print(
             f"  [dim]💩[/dim] [white]{session}[/white]"
             f"    [dim]? help[/dim]  [dim]/ cmd[/dim]  [dim]^D quit[/dim]"
