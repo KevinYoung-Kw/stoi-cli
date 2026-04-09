@@ -10,124 +10,137 @@
   <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-  <nav class="site-nav">
-    <div class="nav-inner">
-      <a class="nav-brand" href="./index.html">STOI</a>
-      <button class="nav-toggle" aria-label="Toggle menu" aria-expanded="false">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="3" y1="6" x2="21" y2="6"></line>
-          <line x1="3" y1="12" x2="21" y2="12"></line>
-          <line x1="3" y1="18" x2="21" y2="18"></line>
-        </svg>
-      </button>
-      <ul class="nav-links">
-        <li><a href="./index.html">首页</a></li>
-        <li><a href="./docs.html" aria-current="page">原理</a></li>
-        <li><a href="./cli.html">CLI</a></li>
-      </ul>
-    </div>
-  </nav>
-
-  <main class="container article">
-    <section class="section">
-      <h1 class="section-title">STOI 的三分层模型</h1>
-      <p class="section-lead">我们把一次 Claude Code 会话的效率，拆成三个可观测、可干预的维度。</p>
-
-      <h2>第一层：Cache Efficiency（缓存效率）</h2>
-      <p>Anthropic 的 prompt caching 让前缀一致的请求只付 10% 的价格。这意味着：</p>
-      <ul>
-        <li>System Prompt 越稳定，命中率越高。</li>
-        <li>Tool result 里动态注入的时间戳、绝对路径、UUID，是 cache miss 的常见元凶。</li>
-        <li>第一轮建立缓存的成本 unavoidable，但从第二轮开始，每一次 miss 都是白花钱。</li>
-      </ul>
-
-      <h2>第二层：Feedback Validity（输出有效性）</h2>
-      <p>光是 cache 命中还不够——如果模型输出了长篇大论，用户却没有采纳（没有修改文件、没有执行建议、只是忽略了），这些 token 也是事实上的浪费。STOI 用规则 + 可选 LLM 判断，来标注每一轮 assistant 输出的有效性。</p>
-      <ul>
-        <li><strong>valid</strong>：用户明显采纳了输出（执行了命令、编辑了文件）。</li>
-        <li><strong>invalid</strong>：用户没有动作，或明确表达不满。</li>
-        <li><strong>partial</strong>：部分采纳，或需要进一步追问。</li>
-      </ul>
-
-      <h2>第三层：Cost Breakdown（成本拆解）</h2>
-      <p>把 cache 命中/未命中的价格差异、有效/无效输出的占比，换算成实际美元。你会看到：</p>
-      <ul>
-        <li>实际花费 vs 没有缓存时的花费</li>
-        <li>无效输出造成的浪费金额</li>
-        <li>长 session 中 context 膨胀带来的边际成本</li>
-      </ul>
-    </section>
-
-    <section class="section">
-      <h2 class="section-title">含屎量等级</h2>
-      <p class="section-lead">含屎量越低越好。等级只是一个便于快速理解的标签。</p>
-      <table>
-        <thead>
-          <tr>
-            <th>等级</th>
-            <th>emoji</th>
-            <th>阈值</th>
-            <th>含义</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>CLEAN</td>
-            <td>&#9989;</td>
-            <td>0% ~ 30%</td>
-            <td>缓存稳定，浪费可控。</td>
-          </tr>
-          <tr>
-            <td>MILD_SHIT</td>
-            <td>&#128993;</td>
-            <td>30% ~ 50%</td>
-            <td>有优化空间，关注一下动态字段。</td>
-          </tr>
-          <tr>
-            <td>SHIT_OVERFLOW</td>
-            <td>&#128992;</td>
-            <td>50% ~ 75%</td>
-            <td>大量 token 没命中缓存，需要排查 System Prompt。</td>
-          </tr>
-          <tr>
-            <td>DEEP_SHIT</td>
-            <td>&#128169;</td>
-            <td>75% ~ 100%</td>
-            <td>成本黑洞，建议立即拆分 session 或重写 Prompt。</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="section">
-      <h2 class="section-title">STOI 四层浪费定位法</h2>
-      <p class="section-lead">在链条分析（chain analysis）中，我们把一次对话里的 token 浪费拆成四个层级，逐层定位、逐层给出可执行建议。</p>
-
-      <h3>L1 输入层 — 精简工具调用的语法噪音</h3>
-      <p>JSON 里多余的缩进、Markdown 装饰符、无意义的换行都会被计入 token。可执行动作：要求 Claude 在工具调用中使用最小化 JSON，去掉不必要的格式字符。</p>
-
-      <h3>L2 结果层 — 压缩冗余的上下文返回</h3>
-      <p>重复的文件内容、过长的 grep 结果、大段未被引用的堆栈信息都会挤占上下文窗口。可执行动作：在 CLAUDE.md 中加入规则——"grep 结果超过 50 行时只返回文件名"。</p>
-
-      <h3>L3 结构层 — 消除破坏缓存的动态字段</h3>
-      <p>System Prompt 或 Tool result 中注入的时间戳、UUID、PID、绝对路径是导致 cache miss 的首要元凶。可执行动作：在 CLAUDE.md 中明确要求过滤掉这些动态内容，或将其移到 user message。</p>
-
-      <h3>L4 输出层 — 克制无意义的总结与重复</h3>
-      <p>Yapping、过度解释、已完成任务的冗余总结，都会增加输出长度且对用户无价值。可执行动作：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</p>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="container">
-      <div class="footer-links">
-        <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
-        <a href="./docs.html">文档</a>
-        <a href="./cli.html">CLI</a>
+  <div class="page-shell">
+    <header class="top-nav">
+      <div class="top-nav-inner">
+        <div class="nav-left">
+          <a class="nav-logo" href="./index.html" data-pjax>
+            <img src="../assets/images/logo.png" alt="STOI">
+            <span>STOI</span>
+          </a>
+          <div class="nav-search" id="search-trigger" aria-label="Search" role="button" tabindex="0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search</span>
+            <kbd>⌘ K</kbd>
+          </div>
+        </div>
+        <div class="nav-right">
+          <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+          <button class="mobile-menu-btn" aria-label="Open menu" aria-expanded="false" id="mobile-menu-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+        </div>
       </div>
-      <p class="footer-copy">© 2025 stoi-cli</p>
-      <p class="footer-zicha handwritten">由于时间原因，这个 STOI 本身也是个 SHIT。</p>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-scroll">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Overview</div>
+          <a class="sidebar-link" href="./index.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            首页
+          </a>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <a class="sidebar-link is-active" href="./docs.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            分析原理
+          </a>
+          <a class="sidebar-link" href="./cli.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            CLI 参考
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <main class="main-content">
+      <div id="content-root">
+        <div class="content-wrapper">
+          <h1>STOI 分析原理</h1>
+          <p class="hero-tagline" style="margin-bottom:2rem">专注于量化 AI 编程工具的投资回报率。支持词法层、语义层、架构层、输出层四维分析，让你知道每一个 Token 花得值不值。</p>
+
+          <h2>三分层效率模型</h2>
+          <p>我们把一次 Claude Code 会话的效率，拆成三个可观测、可干预的维度：</p>
+
+          <h3>L1 Cache Efficiency（缓存效率）</h3>
+          <p>Anthropic 的 prompt caching 让前缀一致的请求只付 10% 的价格。</p>
+          <ul>
+            <li>System Prompt 越稳定，命中率越高。</li>
+            <li>Tool result 里动态注入的时间戳、绝对路径、UUID，是 cache miss 的常见元凶。</li>
+            <li>第一轮建立缓存的成本 unavoidable，但从第二轮开始，每一次 miss 都是白花钱。</li>
+          </ul>
+
+          <h3>L2 Feedback Validity（输出有效性）</h3>
+          <p>光是 cache 命中还不够——如果模型输出了长篇大论，用户却没有采纳（没有修改文件、没有执行建议、只是忽略了），这些 token 也是事实上的浪费。STOI 用规则 + 可选 LLM 判断，来标注每一轮 assistant 输出的有效性。</p>
+          <ul>
+            <li><strong>valid</strong>：用户明显采纳了输出。</li>
+            <li><strong>invalid</strong>：用户没有动作，或明确表达不满。</li>
+            <li><strong>partial</strong>：部分采纳，或需要进一步追问。</li>
+          </ul>
+
+          <h3>L3 Cost Breakdown（成本拆解）</h3>
+          <p>把 cache 命中/未命中的价格差异、有效/无效输出的占比，换算成实际美元。你会看到实际花费、没有缓存时的花费、以及无效输出造成的浪费金额。</p>
+
+          <h2>含屎量等级</h2>
+          <table>
+            <thead>
+              <tr><th>等级</th><th>emoji</th><th>阈值</th><th>含义</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>CLEAN</td><td>&#9989;</td><td>0% ~ 30%</td><td>缓存稳定，浪费可控。</td></tr>
+              <tr><td>MILD_SHIT</td><td>&#128993;</td><td>30% ~ 50%</td><td>有优化空间，关注一下动态字段。</td></tr>
+              <tr><td>SHIT_OVERFLOW</td><td>&#128992;</td><td>50% ~ 75%</td><td>大量 token 没命中缓存，需要排查 System Prompt。</td></tr>
+              <tr><td>DEEP_SHIT</td><td>&#128169;</td><td>75% ~ 100%</td><td>成本黑洞，建议立即拆分 session 或重写 Prompt。</td></tr>
+            </tbody>
+          </table>
+
+          <h2>STOI 四层浪费定位法</h2>
+          <p>在链条分析（chain analysis）中，我们把一次对话里的 token 浪费拆成四个层级，逐层定位、逐层给出可执行建议。</p>
+
+          <h3>L1 输入层 — 精简工具调用的语法噪音</h3>
+          <p>JSON 里多余的缩进、Markdown 装饰符、无意义的换行都会被计入 token。可执行动作：要求 Claude 在工具调用中使用最小化 JSON，去掉不必要的格式字符。</p>
+
+          <h3>L2 结果层 — 压缩冗余的上下文返回</h3>
+          <p>重复的文件内容、过长的 grep 结果、大段未被引用的堆栈信息都会挤占上下文窗口。可执行动作：在 CLAUDE.md 中加入规则——"grep 结果超过 50 行时只返回文件名"。</p>
+
+          <h3>L3 结构层 — 消除破坏缓存的动态字段</h3>
+          <p>System Prompt 或 Tool result 中注入的时间戳、UUID、PID、绝对路径是导致 cache miss 的首要元凶。可执行动作：在 CLAUDE.md 中明确要求过滤掉这些动态内容，或将其移到 user message。</p>
+
+          <h3>L4 输出层 — 克制无意义的总结与重复</h3>
+          <p>Yapping、过度解释、已完成任务的冗余总结，都会增加输出长度且对用户无价值。可执行动作：在 CLAUDE.md 中加入——"完成任务后不要总结已做的事，直接等待下一个指令"。</p>
+        </div>
+
+        <footer class="site-footer">
+          <div class="footer-links">
+            <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+            <a href="./docs.html" data-pjax>文档</a>
+            <a href="./cli.html" data-pjax>CLI</a>
+          </div>
+          <p class="footer-copy">© 2025 stoi-cli</p>
+          <p class="footer-zicha handwritten">由于时间原因，这个 STOI 本身也是个 SHIT。</p>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="search-panel">
+      <div class="search-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="search-input" placeholder="Search pages..." autocomplete="off">
+      </div>
+      <div class="search-results" id="search-results"></div>
     </div>
-  </footer>
+  </div>
 
   <script src="./nav.js"></script>
 </body>
