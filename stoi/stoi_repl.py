@@ -226,6 +226,9 @@ def handle_command(cmd: str) -> bool:
     elif cmd == "/overview":
         _run_overview()
 
+    elif cmd == "/dashboard":
+        _run_dashboard()
+
     elif cmd == "/mcp":
         _run_setup()
 
@@ -663,17 +666,29 @@ def _run_overview():
         console.print("  [green]✅ 整体使用模式健康[/green]")
     console.print()
 
-    # 项目维度统计（哪个项目最浪费）
+    # 项目维度统计（哪个项目最浪费）Feature 3
     projects = r.get("project_stats", [])
     if projects:
-        console.print(f"  [bold white]按项目统计[/bold white]  [dim]（按 session 大小排序）[/dim]")
+        console.print(f"  [bold white]按项目统计（哪个最浪费）[/bold white]  [dim]（按 session 大小排序）[/dim]")
         console.print()
+        max_mb = max((p["total_size_mb"] for p in projects), default=1.0) or 1.0
         for p in projects:
-            bar_w = min(15, int(p["total_size_mb"] / 5))
+            bar_w = max(1, int(p["total_size_mb"] / max_mb * 6))
             bar = "█" * bar_w
+
+            stoi_val = p.get("stoi_score", -1.0)
+            if stoi_val < 0:
+                stoi_str = "[dim]n/a[/dim]"
+            else:
+                stoi_color = "green" if stoi_val < 30 else "yellow" if stoi_val < 50 else "dark_orange" if stoi_val < 75 else "red"
+                stoi_emoji = "✅" if stoi_val < 30 else "🟡" if stoi_val < 50 else "🟠" if stoi_val < 75 else "💩"
+                stoi_str = f"[{stoi_color}]stoi: {stoi_val:.0f}% {stoi_emoji}[/{stoi_color}]"
+
             console.print(
-                f"  [#FFB800]{bar:<15}[/#FFB800]  [dim]{p['path']:<35}[/dim]  "
-                f"[white]{p['sessions']}[/white] sessions  [dim]{p['total_size_mb']:.0f}MB[/dim]"
+                f"  [#FFB800]{bar:<6}[/#FFB800]  [dim]{p['path']:<35}[/dim]  "
+                f"[white]{p['total_size_mb']:.0f}MB[/white]  "
+                f"[dim]{p['sessions']} sessions[/dim]  "
+                f"{stoi_str}"
             )
         console.print()
 
