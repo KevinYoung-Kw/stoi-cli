@@ -51,6 +51,7 @@ COMMANDS = {
     "/dashboard": ("生成可交互 HTML 分析面板",            "浏览器打开，按需 LLM 分析"),
     "/blame":     ("定位 Cache Miss 元凶",                "扫描 System Prompt"),
     "/mcp":     ("配置 MCP / LLM",                     "一键接入 Claude Code"),
+    "/config":    ("配置 STOI",                          "LLM Provider / API Key / TTS"),
     "/?":         ("帮助",                               ""),
     "/quit":      ("退出",                               ""),
 }
@@ -231,6 +232,11 @@ def handle_command(cmd: str) -> bool:
 
     elif cmd == "/mcp":
         _run_setup()
+
+    elif cmd.startswith("/config"):
+        parts = cmd.split()
+        show = len(parts) > 1 and parts[1] in ("show", "--show")
+        _run_config(show=show)
 
     elif cmd == "/blame":
         _run_blame()
@@ -719,6 +725,15 @@ def _run_dashboard():
     console.print()
 
 
+def _run_config(show: bool = False) -> None:
+    """配置 LLM Provider / API Key / TTS"""
+    from .stoi_config import run_onboard, show_config
+    if show:
+        show_config()
+    else:
+        run_onboard()
+
+
 def _run_setup():
     """一键配置 MCP，让 Claude Code 直接调用 STOI"""
     import shutil
@@ -970,8 +985,18 @@ def run():
         # macOS uses libedit - needs different binding
         if 'libedit' in readline.__doc__ or readline.__doc__ is None:
             readline.parse_and_bind("bind ^I rl_complete")
+            # Arrow keys for libedit
+            readline.parse_and_bind("bind '\\e[A' ed-search-prev")
+            readline.parse_and_bind("bind '\\e[B' ed-search-next")
+            readline.parse_and_bind("bind '\\e[C' em-forward-char")
+            readline.parse_and_bind("bind '\\e[D' em-backward-char")
         else:
             readline.parse_and_bind("tab: complete")
+            # Arrow keys for GNU readline
+            readline.parse_and_bind('"\\e[A": previous-history')
+            readline.parse_and_bind('"\\e[B": next-history')
+            readline.parse_and_bind('"\\e[C": forward-char')
+            readline.parse_and_bind('"\\e[D": backward-char')
 
     except ImportError:
         history_file = None
