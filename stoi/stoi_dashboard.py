@@ -1069,6 +1069,7 @@ def _load_turn_data(session_path: Path, turn_index: int) -> dict:
 # ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 _SERVER_PORT = 57018
+_DASHBOARD_HTML_PATH: Path | None = None
 
 
 class _DashboardHandler(BaseHTTPRequestHandler):
@@ -1089,6 +1090,17 @@ class _DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self.path == "/":
+            global _DASHBOARD_HTML_PATH
+            if _DASHBOARD_HTML_PATH and _DASHBOARD_HTML_PATH.exists():
+                body = _DASHBOARD_HTML_PATH.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", str(len(body)))
+                self._send_cors()
+                self.end_headers()
+                self.wfile.write(body)
+                return
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self._send_cors()
@@ -1154,6 +1166,9 @@ def serve_dashboard(html_path: Path, open_browser: bool = True) -> None:
     """
     html_path = Path(html_path)
 
+    global _DASHBOARD_HTML_PATH
+    _DASHBOARD_HTML_PATH = html_path
+
     server = HTTPServer(("localhost", _SERVER_PORT), _DashboardHandler)
 
     if open_browser:
@@ -1161,11 +1176,12 @@ def serve_dashboard(html_path: Path, open_browser: bool = True) -> None:
         def _open():
             import time
             time.sleep(0.4)
+            url = f"http://localhost:{_SERVER_PORT}/"
             try:
                 import subprocess
-                subprocess.Popen(["open", str(html_path)])
+                subprocess.Popen(["open", url])
             except Exception:
-                webbrowser.open(html_path.as_uri())
+                webbrowser.open(url)
         threading.Thread(target=_open, daemon=True).start()
 
     from rich.console import Console
