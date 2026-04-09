@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STOI 诞生记 — 算力狂欢与草台班子</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>(function(){var s=localStorage.getItem('theme'),d=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-theme',s||(d?'dark':'light'));})();</script>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="top-nav">
+      <div class="top-nav-inner">
+        <div class="nav-left">
+          <a class="nav-logo" href="./index.html" data-pjax>
+            <img src="../assets/images/logo.webp" alt="STOI">
+            <span>STOI</span>
+          </a>
+          <div class="nav-search" id="search-trigger" aria-label="Search" role="button" tabindex="0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search</span>
+            <kbd>⌘ K</kbd>
+          </div>
+        </div>
+        <div class="nav-right">
+          <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+          <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+            <svg class="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+          </button>
+          <button class="mobile-menu-btn" aria-label="Open menu" aria-expanded="false" id="mobile-menu-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-scroll">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Overview</div>
+          <a class="sidebar-link " href="./index.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            首页
+          </a>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Story</div>
+          <a class="sidebar-link is-active" href="./story.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            诞生记
+          </a>
+          <a class="sidebar-link " href="./philosophy.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+            产品哲学
+          </a>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <a class="sidebar-link " href="./docs.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            分析原理
+          </a>
+          <a class="sidebar-link " href="./cli.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            CLI 参考
+          </a>
+          <a class="sidebar-link " href="./skill.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            Claude Skill
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <main class="main-content">
+      <div id="content-root">
+
+        <article class="story-article">
+          <header class="story-hero reveal">
+            <div class="story-hero-glow"></div>
+            <span class="story-badge">MANIFESTO</span>
+            <h1 class="story-title">
+              算力狂欢<br>
+              <span class="text-gradient-fire">与草台班子</span>
+            </h1>
+            <p class="story-lead">STOI 诞生记</p>
+          </header>
+
+          <section class="story-section story-quotes">
+            <div class="story-quote-card reveal">
+              <p>「如果一个年薪 50 万美元的工程师，一年烧不掉 25 万美元的 Token，我会感到极度不安。」</p>
+              <cite>黄仁勋 <span>英伟达 CEO</span></cite>
+            </div>
+            <div class="story-quote-card reveal reveal-delay-1">
+              <p>「顶尖工程师消耗的 Token 成本已经与工资相当，但换来的是 10 倍生产力提升。」</p>
+              <cite>安德鲁·博斯沃思 <span>Meta CTO</span></cite>
+            </div>
+          </section>
+
+          <section class="story-section">
+            <div class="story-content reveal">
+              <h2>Tokenmaxxing 的狂欢</h2>
+              <p>现在，整个硅谷、乃至全球的科技行业都陷入了一种叫做 <strong>Tokenmaxxing（算力最大化）</strong> 的狂欢里。老板们在疯狂撒钱，开发者们在疯狂调用 API。仿佛只要你烧的 Token 足够多，账单足够厚，你就是世界上最牛的十倍工程师，正在用最前沿的魔法改变世界。</p>
+              <p class="story-punchline">听起来让人热血沸腾，对吧？</p>
+            </div>
+          </section>
+
+          <section class="story-section story-reveal">
+            <div class="story-content reveal">
+              <h2>但事实真的如此吗？</h2>
+              <p>当我们满怀敬畏地扒开诸如 Claude Code 这类顶级 AI 工具的底层源码时，我们没有看到高深莫测的魔法，我们只看到了一个<strong>精心设计的账单加速器</strong>。</p>
+              <div class="story-discovery reveal reveal-delay-1">
+                <div class="discovery-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                </div>
+                <p>系统提示词里，竟然<strong>硬编码着时间戳</strong>。这意味着什么？意味着时间每跳动一秒，你的上下文缓存（KV-Cache）就全部击穿、全面失效！</p>
+              </div>
+              <p>你在那儿以为 AI 正在为你深度思考架构，其实 Anthropic 只是用这个设计在疯狂重复加载毫无意义的废话。很难不怀疑他们这是想赚我们的 Token 钱，太坏了。</p>
+              <p class="story-shout">这根本不是什么「生产力投资」，这就是纯纯的 <span class="accent">Token 刺客</span>。</p>
+            </div>
+          </section>
+
+          <section class="story-section story-confront">
+            <div class="story-content reveal">
+              <div class="confront-box">
+                <p>当全行业都在为 Tokenmaxxing 鼓掌的时候，STOI 站在这里，只想冷冷地问一个问题：</p>
+                <p class="confront-question">你们烧掉的这几十万美金的 Token，到底有多少变成了高价值的代码，又有多少……只是被无情浪费掉的「屎」？</p>
+              </div>
+            </div>
+          </section>
+
+          <section class="story-section story-origin">
+            <div class="story-content reveal">
+              <h2>逃离「班味」：<br>48 小时的巨大玩具</h2>
+              <p>这就是我们要做 STOI 的原因。但说实话，这个显得有些尖锐的产品，它的起点其实非常荒诞且简单。</p>
+              <p>第一天走进张江科学会馆，一进门就看到一句话——<strong>「48 小时给世界制造一个巨大的玩具」</strong>。那一刻我就在想，我们到底要做个什么东西？它不一定非得是马上就能完美落地的商业巨作，但它一定要言之有物，要能跟当下的荒诞现实呼应得上。</p>
+              <div class="origin-moment reveal reveal-delay-1">
+                <div class="origin-icon">🚽</div>
+                <div class="origin-text">
+                  <p>有意思的是，STOI 的灵感，<strong>来自一次厕所里的闲聊</strong>。</p>
+                  <p>我们几个人挤在洗手池旁边，聊到各自项目里那些被 AI 烧掉的冤枉钱，越聊越好笑——为什么从来没人认真算过这笔账？和懂你的人在一起吐槽一件荒诞的事，这本身就是极大的快乐。聊着聊着，我们突然想：不如策划一个「更大」的项目，把这笔糊涂账算清楚。</p>
+                </div>
+              </div>
+              <p>和懂你的人在一起做一件好玩的事，这本身就是极大的快乐。我们一开始甚至想做得很离谱：加个 TTS 语音播报，在你敲代码的时候，系统直接在旁边大声朗读你现在的<strong>「代码含屎量」</strong>。</p>
+              <p>就是这么一个看似恶搞的起点，推着我们往下走。</p>
+
+              <div class="story-image-wrap reveal reveal-delay-2">
+                <img src="../assets/images/sticker-materials.webp" alt="STOI 黑客松现场贴纸物料">
+                <div class="story-image-caption">张江科学会馆 · 48 小时黑客松现场物料</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="story-section story-belief">
+            <div class="story-content reveal">
+              <h2>相信「相信的力量」</h2>
+              <p>在这个过程中，我一直在问自己：我们来黑客松到底是为了什么？</p>
+              <p>如果我们换了一个地方，结果还是在开会、激烈地争论对错、字斟句酌地搞汇报对齐……那这东西一点都不「黑客松」。</p>
+              <div class="belief-cards">
+                <div class="belief-card reveal reveal-delay-1">
+                  <div class="belief-number">01</div>
+                  <h3>逃离按部就班</h3>
+                  <p>黑客松的意义，就是要你从日复一日的工作里短暂抽离出来。</p>
+                </div>
+                <div class="belief-card reveal reveal-delay-2">
+                  <div class="belief-number">02</div>
+                  <h3>极速交付</h3>
+                  <p>用最快、最极限的方式，交付给世界一个可以运行、有技术底色、能狠狠戳中现状的东西。</p>
+                </div>
+                <div class="belief-card reveal reveal-delay-3">
+                  <div class="belief-number">03</div>
+                  <h3>竭尽全力</h3>
+                  <p>在 48 小时内拼尽全力，看看我们到底能走到哪里，这就够了。</p>
+                </div>
+              </div>
+              <p>现在的世界，不缺完美的 PPT，也不缺严丝合缝的流程。很多真正有意思的创业者，都在做自己真正喜欢的、感兴趣的东西。</p>
+              <p class="story-punchline">对于我们来说，STOI 就是我们这 48 小时交出的答卷。始终相信「相信的力量」。</p>
+              <p class="story-closing">这，就足够了。</p>
+
+              <div class="story-image-wrap reveal reveal-delay-1">
+                <img src="../assets/images/vi-manual.webp" alt="STOI 品牌 VI 视觉规范手册">
+                <div class="story-image-caption">即便只有 48 小时，我们也为这个项目认真设计了品牌视觉</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="story-cta">
+            <div class="cta-glow"></div>
+            <h2 class="reveal">准备好加入这场审计了吗？</h2>
+            <p class="reveal reveal-delay-1">让我们一起，把无意识烧掉的 Token，变成真正看得见产出的投资。</p>
+            <div class="btn-group reveal reveal-delay-2">
+              <a class="btn btn-primary btn-large" href="./cli.html" data-pjax>开始审计</a>
+              <a class="btn btn-secondary btn-large" href="./index.html" data-pjax>了解更多</a>
+            </div>
+          </section>
+        </article>
+
+        <footer class="site-footer landing-footer">
+          <div class="footer-links">
+            <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+            <a href="./docs.html" data-pjax>文档</a>
+            <a href="./cli.html" data-pjax>CLI</a>
+          </div>
+          <p class="footer-copy">© 2025 stoi-cli · 让每一个 Token 花得值</p>
+          <p class="footer-zicha handwritten">由于时间原因，这个 STOI 项目本身也是个 SHIT。</p>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="search-panel">
+      <div class="search-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="search-input" placeholder="Search pages..." autocomplete="off">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script src="./nav.js"></script>
+</body>
+</html>

@@ -5,7 +5,7 @@ stoi_chain.py — 完整对话链条分析
 读取 Claude Code session 的完整链条：
   User message → System Prompt → Tool calls → Tool results → Assistant output → Usage
 
-基于洛小山四层优化方法论：
+四层优化方法论：
   L1 语法层：格式 token 浪费（JSON 缩进、Markdown 装饰）
   L2 语义层：tool result 内容冗余、重复的 context
   L3 架构层：cache miss 根因（动态字段注入）
@@ -283,10 +283,10 @@ def parse_chain(session_path: Path, max_turns: int = 50) -> list[ChainTurn]:
     return turns
 
 
-# ── 四层分析（洛小山方法论）──────────────────────────────────────────────────
+# ── 四层分析 ──────────────────────────────────────────────────
 def analyze_chain(turns: list[ChainTurn], session_name: str = "") -> ChainAnalysis:
     """
-    基于完整链条，按洛小山四层方法论分析并给出可执行建议
+    基于完整链条，按四层方法论分析并给出可执行建议
     """
     analysis = ChainAnalysis(session_name=session_name, turns=turns)
 

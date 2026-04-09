@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="20" fill="#FFB800"/>
+  <g fill="#1C1C1C">
+    <!-- ears -->
+    <ellipse cx="26" cy="34" rx="8" ry="14" transform="rotate(-15 26 34)"/>
+    <ellipse cx="74" cy="34" rx="8" ry="14" transform="rotate(15 74 34)"/>
+    <!-- head base -->
+    <ellipse cx="50" cy="56" rx="34" ry="36"/>
+    <!-- tuft -->
+    <ellipse cx="50" cy="18" rx="10" ry="7"/>
+    <ellipse cx="50" cy="12" rx="5" ry="4"/>
+  </g>
+  <g fill="#FFB800">
+    <!-- eye patches -->
+    <ellipse cx="36" cy="52" rx="10" ry="12"/>
+    <ellipse cx="64" cy="52" rx="10" ry="12"/>
+  </g>
+  <!-- glasses frame -->
+  <circle cx="36" cy="52" r="9.5" fill="none" stroke="#1C1C1C" stroke-width="3.5"/>
+  <circle cx="64" cy="52" r="9.5" fill="none" stroke="#1C1C1C" stroke-width="3.5"/>
+  <line x1="45.5" y1="52" x2="54.5" y2="52" stroke="#1C1C1C" stroke-width="3"/>
+  <!-- pupils -->
+  <circle cx="36" cy="52" r="3.5" fill="#1C1C1C"/>
+  <circle cx="64" cy="52" r="3.5" fill="#1C1C1C"/>
+  <!-- snout -->
+  <ellipse cx="50" cy="72" rx="12" ry="8" fill="#FFB800"/>
+  <ellipse cx="46" cy="70" rx="3" ry="2.5" fill="#1C1C1C"/>
+  <ellipse cx="54" cy="70" rx="3" ry="2.5" fill="#1C1C1C"/>
+  <path d="M47 76q3 3 6 0" fill="none" stroke="#1C1C1C" stroke-width="2.5" stroke-linecap="round"/>
+</svg>

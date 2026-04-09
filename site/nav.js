@@ -4,6 +4,9 @@
     { url: './index.html', title: 'STOI — Shit Token On Investment', label: '首页' },
     { url: './docs.html', title: 'STOI 原理 — 文档', label: '分析原理' },
     { url: './cli.html', title: 'STOI CLI 参考', label: 'CLI 参考' },
+    { url: './skill.html', title: 'STOI Claude Skill', label: 'Claude Skill' },
+    { url: './philosophy.html', title: 'STOI 产品哲学', label: '产品哲学' },
+    { url: './story.html', title: 'STOI 诞生记', label: '诞生记' },
   ];
 
   const isLocal = location.protocol === 'file:';
@@ -78,6 +81,8 @@
     initScrollReveal();
     initBurnCounter();
     initHeroParallax();
+    initCopyButtons();
+    initPrincipleCards();
   }
 
   function prefetch(url) {
@@ -289,6 +294,33 @@
     }
   }
 
+  // ── Copy Buttons ─────────────────────────────────────────────────────────
+  function initCopyButtons() {
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      const block = btn.closest('[data-copy]');
+      const text = block?.dataset.copy || '';
+      if (!text) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.classList.add('is-copied');
+        setTimeout(() => btn.classList.remove('is-copied'), 1400);
+      } catch {}
+    });
+  }
+
+  // ── Principle Cards ──────────────────────────────────────────────────────
+  function initPrincipleCards() {
+    document.addEventListener('click', (e) => {
+      const card = e.target.closest('.principle-card');
+      if (!card) return;
+      const isOpen = card.classList.contains('is-open');
+      document.querySelectorAll('.principle-card').forEach(c => c.classList.remove('is-open'));
+      if (!isOpen) card.classList.add('is-open');
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     bindPjax();
     bindMobileMenu();
@@ -297,6 +329,8 @@
     initScrollReveal();
     initBurnCounter();
     initHeroParallax();
+    initCopyButtons();
+    initPrincipleCards();
     updateActiveSidebar(location.pathname.split('/').pop() || './index.html');
   });
 })();

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STOI Claude Skill — 让 Claude 自己审计自己</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>(function(){var s=localStorage.getItem('theme'),d=window.matchMedia('(prefers-color-scheme: dark)').matches;document.documentElement.setAttribute('data-theme',s||(d?'dark':'light'));})();</script>
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="top-nav">
+      <div class="top-nav-inner">
+        <div class="nav-left">
+          <a class="nav-logo" href="./index.html" data-pjax>
+            <img src="../assets/images/logo.webp" alt="STOI">
+            <span>STOI</span>
+          </a>
+          <div class="nav-search" id="search-trigger" aria-label="Search" role="button" tabindex="0">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span>Search</span>
+            <kbd>⌘ K</kbd>
+          </div>
+        </div>
+        <div class="nav-right">
+          <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+          <button class="theme-toggle" id="theme-toggle" aria-label="Toggle theme">
+            <svg class="moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            <svg class="sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+          </button>
+          <button class="mobile-menu-btn" aria-label="Open menu" aria-expanded="false" id="mobile-menu-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-scroll">
+        <div class="sidebar-group">
+          <div class="sidebar-title">Overview</div>
+          <a class="sidebar-link " href="./index.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            首页
+          </a>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Story</div>
+          <a class="sidebar-link " href="./story.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            诞生记
+          </a>
+          <a class="sidebar-link " href="./philosophy.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+            产品哲学
+          </a>
+        </div>
+        <div class="sidebar-group">
+          <div class="sidebar-title">Documentation</div>
+          <a class="sidebar-link " href="./docs.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            分析原理
+          </a>
+          <a class="sidebar-link " href="./cli.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            CLI 参考
+          </a>
+          <a class="sidebar-link is-active" href="./skill.html" data-pjax>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            Claude Skill
+          </a>
+        </div>
+      </div>
+    </aside>
+
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <main class="main-content">
+      <div id="content-root">
+        <div class="content-wrapper">
+          <div class="skill-hero reveal">
+            <div class="skill-badge">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+              MCP Server · 本质上是个套壳技能
+            </div>
+            <h1 class="skill-title">让 Claude <span class="accent">自己拆自己的台</span></h1>
+            <p class="skill-lead">STOI 可以塞进 Claude Code 当 Skill。说白了，就是让你连终端都不用开，直接在对框里问它：「我刚这轮是不是又在废话上烧钱了？」</p>
+          </div>
+
+          <div class="skill-demo-large reveal reveal-delay-1">
+            <div class="demo-header">
+              <span class="status-dot" style="background:#8b5cf6;"></span>
+              <span>Example Conversation</span>
+            </div>
+            <div class="demo-body">
+              <div class="chat-bubble user">
+                <div class="chat-avatar" style="background:#e5e7eb;color:#374151">U</div>
+                <div class="chat-content">
+                  <p>分析一下我上一个 session 的 token 效率，看看 cache 命中率怎么样。</p>
+                </div>
+              </div>
+              <div class="chat-bubble assistant">
+                <div class="chat-avatar"><img src="../assets/images/logo.webp" alt=""></div>
+                <div class="chat-content">
+                  <p>已调用 <code>stoi_report</code> 对 sess_abc123 完成分析：</p>
+                  <div class="chat-metrics">
+                    <div class="chat-metric"><span class="label">Cache Hit</span><span class="value">87%</span></div>
+                    <div class="chat-metric"><span class="label">含屎量</span><span class="value">12%</span></div>
+                    <div class="chat-metric"><span class="label">等级</span><span class="value">✅ CLEAN</span></div>
+                  </div>
+                  <p class="chat-advice">主要问题：System Prompt 中的动态时间戳导致前几轮 cache miss。建议移除或固化格式。</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <h2 class="reveal">STOI Skill 到底能干啥？</h2>
+          <p class="reveal">接入后，Claude 可以直接调用 5 个 MCP 工具来分析自己的效率。你不需要记住任何命令，只需要像正常对话一样提问——因为大部分的命令本来也不值得背。</p>
+
+          <div class="cmd-grid">
+            <div class="cmd-card reveal">
+              <div class="cmd-name">stoi_latest</div>
+              <p>读取你最近一次对话的账单。总 token、cache 命中率、「含屎量」一目了然。</p>
+            </div>
+            <div class="cmd-card reveal reveal-delay-1">
+              <div class="cmd-name">stoi_report</div>
+              <p>对指定 session 做逐轮审计。哪一轮在灌水，哪一轮该写进耻辱柱。</p>
+            </div>
+            <div class="cmd-card reveal reveal-delay-2">
+              <div class="cmd-name">stoi_insights</div>
+              <p>横向对比多个 session，发现你的长期恶习和周期性翻车现场。</p>
+            </div>
+            <div class="cmd-card reveal reveal-delay-1">
+              <div class="cmd-name">stoi_overview</div>
+              <p>列出近期所有 session 的元数据。快速定位哪一笔账单最值得吵架。</p>
+            </div>
+            <div class="cmd-card reveal reveal-delay-2">
+              <div class="cmd-name">stoi_blame</div>
+              <p> pinpoint 最大的 token 浪费源。精准到具体哪一轮、哪一行 Prompt。</p>
+            </div>
+          </div>
+
+          <h2 class="reveal">为什么非要在 Claude 里塞这玩意？</h2>
+
+          <div class="principles-grid">
+            <div class="principle-card reveal" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 8 19 8"/></svg></div>
+              <div class="principle-copy">
+                <h4>懒得切窗口</h4>
+                <p>不需要离开编辑器去打开终端或浏览器。你正在写代码，同时就能问到效率数据。对，就是为了偷懒。</p>
+              </div>
+            </div>
+            <div class="principle-card reveal reveal-delay-1" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+              <div class="principle-copy">
+                <h4>不用背命令</h4>
+                <p>不需要背什么 stoi report --html。直接说「看看我为什么 cache miss」，Claude 会调用 stoi_blame 自己查。</p>
+              </div>
+            </div>
+            <div class="principle-card reveal reveal-delay-2" tabindex="0">
+              <div class="principle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+              <div class="principle-copy">
+                <h4>闭环甩锅</h4>
+                <p>Claude 拿到 STOI 的分析结果后，可以直接修改你的 CLAUDE.md，或者把锅甩回给你：「你看，是你 Prompt 写烂了。」</p>
+              </div>
+            </div>
+          </div>
+
+          <h2 class="reveal">怎么装上这玩意？</h2>
+          <p class="reveal">如果你已经装了 stoi-cli，在 REPL 里敲一行命令，它就会自动往 Claude Code 的 skills 目录里塞一个配置文件。就这么粗暴。</p>
+
+          <div class="code-block copyable reveal" data-copy="/mcp">
+            <div class="code-header"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span><button class="copy-btn" aria-label="复制"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
+            <code>/mcp</code>
+          </div>
+
+          <p class="reveal">或者，你可以手动复制 <a href="https://github.com/KevinYoung-Kw/stoi-cli/tree/main/skills/stoi" target="_blank" rel="noopener">skills/stoi/SKILL.md</a> 到 Claude Code 的 skills 目录里。本质上就是复制粘贴一个 Markdown 文件，没什么高科技。</p>
+
+          <div class="cta-box" style="margin-top:2.5rem">
+            <h3>准备好让 Claude 自己揭自己老底了吗？</h3>
+            <p>一行命令安装 CLI，或者复制粘贴一个 Skill。两种路径，一样的拆台能力。</p>
+            <div class="btn-group">
+              <a class="btn btn-primary" href="./cli.html" data-pjax>查看 CLI 安装</a>
+              <a class="btn btn-secondary" href="./index.html" data-pjax>回到首页</a>
+            </div>
+          </div>
+        </div>
+
+        <footer class="site-footer landing-footer">
+          <div class="footer-links">
+            <a href="https://github.com/KevinYoung-Kw/stoi-cli" target="_blank" rel="noopener">GitHub</a>
+            <a href="./docs.html" data-pjax>文档</a>
+            <a href="./cli.html" data-pjax>CLI</a>
+          </div>
+          <p class="footer-copy">© 2025 stoi-cli · 让每一个 Token 死得明白</p>
+          <p class="footer-zicha handwritten">由于时间原因，这个 STOI 项目本身也是个 SHIT。</p>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <div class="search-modal" id="search-modal" role="dialog" aria-modal="true" aria-label="Search">
+    <div class="search-panel">
+      <div class="search-input-wrap">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="search-input" placeholder="Search pages..." autocomplete="off">
+      </div>
+      <div class="search-results" id="search-results"></div>
+    </div>
+  </div>
+
+  <script src="./nav.js"></script>
+</body>
+</html>
