@@ -8,13 +8,13 @@ stoi_config.py — STOI 配置管理
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
+from rich.table import Table
 from rich.text import Text
 from rich import box
 
@@ -74,6 +74,20 @@ PROVIDER_MODELS = {
 }
 
 
+try:
+    import questionary
+    _HAS_QUESTIONARY = True
+except Exception:
+    _HAS_QUESTIONARY = False
+
+_QUESTIONARY_STYLE = questionary.Style([
+    ("selected", "fg:#FFB800 bold"),
+    ("pointer", "fg:#FFB800 bold"),
+    ("question", "fg:white bold"),
+    ("answer", "fg:#FFB800 bold"),
+]) if _HAS_QUESTIONARY else None
+
+
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
         return DEFAULT_CONFIG.copy()
@@ -119,33 +133,90 @@ def is_configured() -> bool:
     return bool(llm.get("provider") and llm.get("api_key"))
 
 
+def _step_header(step: int, total: int, title: str) -> None:
+    console.print()
+    console.print(Panel.fit(
+        f"[bold #FFB800]Step {step}/{total} — {title}[/bold #FFB800]",
+        border_style="#FFB800",
+        padding=(0, 2),
+    ))
+
+
+def _qselect(message: str, choices, default=None):
+    if _HAS_QUESTIONARY:
+        return questionary.select(
+            message,
+            choices=choices,
+            default=default,
+            style=_QUESTIONARY_STYLE,
+        ).ask()
+    # minimal fallback
+    console.print(f"[bold white]{message}[/bold white]")
+    for i, c in enumerate(choices, 1):
+        label = c if isinstance(c, str) else c.value
+        console.print(f"  [dim]{i}[/dim]  {label}")
+    idx = int(Prompt.ask("请选择", default="1")) - 1
+    return choices[idx] if choices else None
+
+
+def _qconfirm(message: str, default: bool = True):
+    if _HAS_QUESTIONARY:
+        return questionary.confirm(message, default=default, style=_QUESTIONARY_STYLE).ask()
+    return Confirm.ask(message, default=default)
+
+
+def _qprompt(message: str, default: str = "", password: bool = False):
+    if _HAS_QUESTIONARY:
+        return questionary.text(message, default=default, style=_QUESTIONARY_STYLE).ask() if not password else Prompt.ask(message, password=True)
+    return Prompt.ask(message, default=default, password=password)
+
+
 def run_onboard() -> None:
     """交互式 onboard 流程"""
     console.print()
     console.print(Panel.fit(
-        "[bold #FFB800]💩 STOI — 初始配置[/bold #FFB800]\n"
+        "[bold #FFB800]STOI — 初始配置[/bold #FFB800]\n"
         "[dim]配置 LLM，用于生成 AI 改进建议[/dim]",
         border_style="#FFB800",
     ))
     console.print()
 
     cfg = load_config()
+    TOTAL_STEPS = 4
 
-    # ── 选择 LLM Provider ──────────────────────────────────────────────────────
-    console.print("[bold white]选择 LLM Provider[/bold white]")
-    console.print("  [dim]1[/dim]  Anthropic Claude  [dim](推荐，与 Claude Code 生态一致)[/dim]")
-    console.print("  [dim]2[/dim]  OpenAI GPT")
-    console.print("  [dim]3[/dim]  通义千问 Qwen")
-    console.print("  [dim]4[/dim]  DeepSeek")
-    console.print("  [dim]5[/dim]  自定义 OpenAI 兼容接口")
-    console.print()
+    # ── Step 1: 选择 LLM Provider ─────────────────────────────────────────────
+    _step_header(1, TOTAL_STEPS, "选择 LLM Provider")
 
-    choice = Prompt.ask("请选择", choices=["1", "2", "3", "4", "5"], default="1")
-    provider_map = {"1": "anthropic", "2": "openai", "3": "qwen", "4": "deepseek", "5": "custom"}
-    provider = provider_map[choice]
+    provider_choices = [
+        questionary.Choice("Anthropic Claude  (推荐，与 Claude Code 生态一致)", value="anthropic"),
+        questionary.Choice("OpenAI GPT", value="openai"),
+        questionary.Choice("通义千问 Qwen", value="qwen"),
+        questionary.Choice("DeepSeek", value="deepseek"),
+        questionary.Choice("自定义 OpenAI 兼容接口", value="custom"),
+    ] if _HAS_QUESTIONARY else [
+        "anthropic (推荐，与 Claude Code 生态一致)",
+        "openai",
+        "qwen",
+        "deepseek",
+        "custom (自定义 OpenAI 兼容接口)",
+    ]
 
-    # ── API Key ────────────────────────────────────────────────────────────────
-    console.print()
+    if _HAS_QUESTIONARY:
+        provider = questionary.select(
+            "请选择 LLM Provider:",
+            choices=provider_choices,
+            default=provider_choices[0],
+            style=_QUESTIONARY_STYLE,
+        ).ask()
+    else:
+        for i, c in enumerate(provider_choices, 1):
+            console.print(f"  [dim]{i}[/dim]  {c}")
+        provider_map = {"1": "anthropic", "2": "openai", "3": "qwen", "4": "deepseek", "5": "custom"}
+        provider = provider_map[Prompt.ask("请选择", choices=["1","2","3","4","5"], default="1")]
+
+    # ── Step 2: API Key ───────────────────────────────────────────────────────
+    _step_header(2, TOTAL_STEPS, "API Key")
+
     if provider != "custom":
         pinfo = PROVIDER_MODELS[provider]
         env_key = pinfo["env_key"]
@@ -154,30 +225,45 @@ def run_onboard() -> None:
             console.print(f"[dim]检测到环境变量 {env_key}，将直接使用[/dim]")
             api_key = existing
         else:
-            console.print(f"[bold white]输入 API Key[/bold white] [dim]({env_key})[/dim]")
-            api_key = Prompt.ask("API Key", password=True)
+            api_key = _qprompt(f"请输入 {env_key}", password=True)
     else:
-        api_key = Prompt.ask("[bold white]API Key[/bold white]", password=True)
+        api_key = _qprompt("API Key", password=True)
 
-    # ── 选择模型 ──────────────────────────────────────────────────────────────
-    console.print()
+    # ── Step 3: 选择模型 ──────────────────────────────────────────────────────
+    _step_header(3, TOTAL_STEPS, "选择模型")
+
     if provider != "custom":
         pinfo = PROVIDER_MODELS[provider]
         models = pinfo["models"]
-        console.print("[bold white]选择模型[/bold white]")
-        for i, m in enumerate(models, 1):
-            suffix = " [dim](默认)[/dim]" if m == pinfo["default"] else ""
-            console.print(f"  [dim]{i}[/dim]  {m}{suffix}")
-        model_choice = Prompt.ask("请选择", choices=[str(i) for i in range(1, len(models)+1)], default="1")
-        model = models[int(model_choice) - 1]
+        default_model = pinfo["default"]
+        if _HAS_QUESTIONARY:
+            model_choices = [
+                questionary.Choice(
+                    f"{m}  (默认)" if m == default_model else m,
+                    value=m,
+                )
+                for m in models
+            ]
+            model = questionary.select(
+                "请选择模型:",
+                choices=model_choices,
+                default=next((c for c in model_choices if c.value == default_model), model_choices[0]),
+                style=_QUESTIONARY_STYLE,
+            ).ask()
+        else:
+            for i, m in enumerate(models, 1):
+                suffix = " [dim](默认)[/dim]" if m == default_model else ""
+                console.print(f"  [dim]{i}[/dim]  {m}{suffix}")
+            model = models[int(Prompt.ask("请选择", choices=[str(i) for i in range(1, len(models)+1)], default="1")) - 1]
         base_url = pinfo["base_url"]
     else:
-        base_url = Prompt.ask("[bold white]API Base URL[/bold white]", default="https://api.openai.com/v1")
-        model = Prompt.ask("[bold white]模型名称[/bold white]", default="gpt-4o")
+        base_url = _qprompt("API Base URL", default="https://api.openai.com/v1")
+        model = _qprompt("模型名称", default="gpt-4o")
 
-    # ── TTS 配置 ──────────────────────────────────────────────────────────────
-    console.print()
-    tts_enabled = Confirm.ask("[bold white]启用语音播报（TTS）？[/bold white]", default=True)
+    # ── Step 4: TTS 配置 ──────────────────────────────────────────────────────
+    _step_header(4, TOTAL_STEPS, "语音播报")
+
+    tts_enabled = _qconfirm("启用语音播报（TTS）？", default=True)
 
     # ── 保存 ──────────────────────────────────────────────────────────────────
     cfg["llm"]["provider"] = provider
@@ -188,12 +274,20 @@ def run_onboard() -> None:
     save_config(cfg)
 
     console.print()
-    console.print(Panel.fit(
-        f"[bold green]✅ 配置完成！[/bold green]\n"
-        f"  Provider: [cyan]{provider}[/cyan]\n"
-        f"  Model:    [cyan]{model}[/cyan]\n"
-        f"  TTS:      [cyan]{'开启' if tts_enabled else '关闭'}[/cyan]",
+    # Summary panel
+    summary_table = Table(show_header=False, box=box.SIMPLE)
+    summary_table.add_column("Key", style="dim", justify="right")
+    summary_table.add_column("Value", style="cyan")
+    summary_table.add_row("Provider", provider)
+    summary_table.add_row("Model", model)
+    summary_table.add_row("TTS", "开启" if tts_enabled else "关闭")
+    summary_table.add_row("配置文件", str(CONFIG_FILE))
+
+    console.print(Panel(
+        summary_table,
+        title="[bold green]配置完成！[/bold green]",
         border_style="green",
+        padding=(1, 2),
     ))
     console.print()
     console.print("现在运行 [bold #FFB800]stoi analyze[/bold #FFB800] 分析你的 session，")
@@ -208,13 +302,20 @@ def show_config() -> None:
     key = llm.get("api_key", "")
     key_display = f"{key[:8]}...{key[-4:]}" if len(key) > 12 else ("已配置" if key else "未配置")
 
-    console.print(Panel.fit(
-        f"[bold #FFB800]STOI 当前配置[/bold #FFB800]\n\n"
-        f"  Provider:  [cyan]{llm.get('provider', '未配置')}[/cyan]\n"
-        f"  Model:     [cyan]{llm.get('model', '未配置')}[/cyan]\n"
-        f"  API Key:   [dim]{key_display}[/dim]\n"
-        f"  Base URL:  [dim]{llm.get('base_url', '')}[/dim]\n"
-        f"  TTS:       [cyan]{'开启' if cfg.get('tts', {}).get('enabled') else '关闭'}[/cyan]\n"
-        f"  配置文件:  [dim]{CONFIG_FILE}[/dim]",
+    table = Table(show_header=False, box=box.ROUNDED, expand=False)
+    table.add_column("Key", style="dim", justify="right", no_wrap=True)
+    table.add_column("Value", style="cyan")
+
+    table.add_row("Provider", llm.get("provider", "未配置") or "未配置")
+    table.add_row("Model", llm.get("model", "未配置") or "未配置")
+    table.add_row("API Key", key_display)
+    table.add_row("Base URL", llm.get("base_url", "") or "—")
+    table.add_row("TTS", "开启" if cfg.get("tts", {}).get("enabled") else "关闭")
+    table.add_row("配置文件", str(CONFIG_FILE))
+
+    console.print(Panel(
+        table,
+        title="[bold #FFB800]STOI 当前配置[/bold #FFB800]",
         border_style="#FFB800",
+        padding=(1, 2),
     ))

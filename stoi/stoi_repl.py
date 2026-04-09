@@ -9,6 +9,7 @@ import os
 import sys
 import subprocess
 import shutil
+import difflib
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
@@ -31,6 +32,7 @@ def _ask(prompt_text: str, choices: list = None, default: str = "") -> str:
             return default
 from rich.live import Live
 from rich.table import Table
+from rich.panel import Panel
 from rich import box
 
 console = Console(highlight=False)
@@ -164,32 +166,47 @@ def _broadcast_stoi_score(score: float) -> None:
 def print_welcome():
     console.clear()
     console.print(Text(LOGO, style="bold #FFB800"))
-    console.print(
-        f"  [bold white]Shit Token On Investment[/bold white]  [dim]v2.0[/dim]   "
-        f"[dim]{state.status_line}[/dim]"
-    )
     console.print()
-    console.print("  [dim]/ for commands · ? for shortcuts · Ctrl+D to exit[/dim]")
-    console.print("  [dim]/mcp to configure MCP for Claude Code integration[/dim]")
+    console.print("  [bold white]Shit Token On Investment[/bold white]  [dim]v2.0[/dim]")
+    console.print(f"  [dim]{state.status_line}[/dim]")
+    console.print()
+    console.print("  [dim]?[/dim] shortcuts    [dim]/[/dim] commands    [dim]^D[/dim] exit")
+    if not state.current_session:
+        console.print("  [dim]tip:[/dim] /mcp  to configure MCP for Claude Code")
     console.print()
 
 
 def print_shortcuts():
     console.print()
-    console.print("  [bold #FFB800]快捷键[/bold #FFB800]")
+    table = Table(
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold #FFB800",
+        border_style="#FFB800",
+        padding=(0, 2),
+        width=76,
+    )
+    table.add_column("Shortcut", style="bold", width=12)
+    table.add_column("What it does", style="dim")
+    for key, desc in SHORTCUTS:
+        table.add_row(key, desc)
+    console.print(table)
+
     console.print()
-    left = SHORTCUTS[:3]
-    right = SHORTCUTS[3:]
-    for i in range(max(len(left), len(right))):
-        l = f"  [bold]{left[i][0]:<12}[/bold] [dim]{left[i][1]}[/dim]" if i < len(left) else ""
-        r = f"  [bold]{right[i][0]:<12}[/bold] [dim]{right[i][1]}[/dim]" if i < len(right) else ""
-        console.print(f"{l:<40}{r}")
-    console.print()
-    console.print("  [bold #FFB800]命令[/bold #FFB800]")
-    console.print()
+    cmd_table = Table(
+        box=box.ROUNDED,
+        show_header=True,
+        header_style="bold #FFB800",
+        border_style="#FFB800",
+        padding=(0, 1),
+        width=76,
+    )
+    cmd_table.add_column("Command", style="bold #FFB800", width=14)
+    cmd_table.add_column("Description", width=26)
+    cmd_table.add_column("[dim]Note[/dim]", style="dim")
     for cmd, (desc, note) in COMMANDS.items():
-        note_str = f"  [dim]{note}[/dim]" if note else ""
-        console.print(f"  [bold #FFB800]{cmd:<14}[/bold #FFB800] {desc}{note_str}")
+        cmd_table.add_row(cmd, desc, note or "")
+    console.print(cmd_table)
     console.print()
 
 
@@ -245,7 +262,14 @@ def handle_command(cmd: str) -> bool:
         pass  # 空行不报错
 
     else:
-        console.print(f"  [dim]未知命令: {cmd}  输入 / 查看可用命令[/dim]")
+        suggestions = difflib.get_close_matches(cmd, COMMANDS.keys(), n=1, cutoff=0.4)
+        if suggestions:
+            sug = suggestions[0]
+            console.print(f"  [yellow]💩 未知命令:[/yellow] [white]{cmd}[/white]")
+            console.print(f"  [dim]你是不是想输入[/dim] [bold #FFB800]{sug}[/bold #FFB800]？[dim]按 ? 查看所有命令。[/dim]")
+        else:
+            console.print(f"  [yellow]💩 未知命令:[/yellow] [white]{cmd}[/white]")
+            console.print(f"  [dim]输入 / 或 ? 查看可用命令。[/dim]")
 
     return True
 
@@ -390,11 +414,18 @@ def _run_sessions(filter_agent: Optional[str] = None):
                 (a, s, items) for a, s, items in agents_available if a == selected_key
             )
         except Exception:
-            # fallback
+            console.print("  [dim]输入数字选择 Agent[/dim]")
             for i, (key, name, items) in enumerate(agents_available, 1):
-                console.print(f"  [bold]{i}[/bold]  {name}  [dim]{len(items)} sessions[/dim]")
-            choice = _ask("选择", choices=[str(i) for i in range(1, len(agents_available)+1)], default="1")
-            selected_agent, _, sessions = agents_available[int(choice)-1]
+                console.print(f"  {i}. {name}  ({len(items)} sessions)")
+            try:
+                c = input("  选择: ").strip() or "1"
+            except (EOFError, KeyboardInterrupt):
+                return
+            try:
+                idx = max(0, min(len(agents_available) - 1, int(c) - 1))
+            except Exception:
+                return
+            selected_agent, _, sessions = agents_available[idx]
     else:
         selected_agent, _, sessions = agents_available[0]
 
@@ -403,16 +434,10 @@ def _run_sessions(filter_agent: Optional[str] = None):
     console.print(f"  [bold #FFB800]Sessions[/bold #FFB800]  [dim]{selected_agent}[/dim]")
     console.print()
 
-    table = Table(box=None, show_header=False, padding=(0, 1))
-    table.add_column("", style="bold", width=4)
-    table.add_column("时间", style="dim", width=14)
-    table.add_column("名称", width=38)
-    table.add_column("", style="dim", width=6)
-
     try:
         import questionary
 
-        def _session_label(s, idx):
+        def _session_label(s):
             if isinstance(s, Path):
                 mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
                 name  = f"{s.parent.name[:16]}/{s.stem[:14]}"
@@ -424,7 +449,7 @@ def _run_sessions(filter_agent: Optional[str] = None):
                 return f"  {mtime}  {s.get('title','')[:40]}"
 
         session_choices = [
-            questionary.Choice(_session_label(s, i), value=i)
+            questionary.Choice(_session_label(s), value=i)
             for i, s in enumerate(sessions[:20])
         ] + [questionary.Choice("  ─ 取消", value=-1)]
 
@@ -442,42 +467,27 @@ def _run_sessions(filter_agent: Optional[str] = None):
 
         if selected_idx is None or selected_idx == -1:
             return
-        choice_num = selected_idx + 1  # 1-indexed for rest of function
-        # override the idx logic below
         idx = selected_idx
 
     except Exception:
-        # fallback to number input with pagination
-        page_size, page, total = 10, 0, len(sessions)
-        while True:
-            start, end = page * page_size, min((page+1)*page_size, total)
-            table = Table(box=None, show_header=False, padding=(0,1))
-            table.add_column("", width=4); table.add_column("时间", width=14, style="dim")
-            table.add_column("名称", width=36); table.add_column("", width=6, style="dim")
-            for i, s in enumerate(sessions[start:end], start+1):
-                if isinstance(s, Path):
-                    mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
-                    name = f"{s.parent.name[:14]}/{s.stem[:14]}"
-                    size = f"{s.stat().st_size//1024}K"
-                    marker = "[green]●[/green]" if state.current_session==s else " "
-                else:
-                    mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
-                    name, size, marker = s.get("title","")[:30], "", " "
-                table.add_row(f"{marker}{i}", mtime, name, size)
-            console.print(table)
-            if total > page_size:
-                console.print(f"  [dim]第{page+1}/{(total-1)//page_size+1}页 · n下页 p上页[/dim]\n")
-            nums = [str(i) for i in range(start+1, end+1)]
-            choice = _ask(f"选择(1-{total},n/p翻页,q取消)", choices=nums+["n","p","q"], default="q")
-            if choice=="n" and end<total: page+=1; continue
-            elif choice=="p" and page>0: page-=1; continue
-            elif choice=="q": return
-            else: idx=int(choice)-1; break
+        console.print(f"  [dim]输入数字选择 session (1-{len(sessions)})[/dim]")
+        for i, s in enumerate(sessions[:20], 1):
+            if isinstance(s, Path):
+                mtime = datetime.fromtimestamp(s.stat().st_mtime).strftime("%m-%d %H:%M")
+                name = f"{s.parent.name[:16]}/{s.stem[:14]}"
+                console.print(f"  {i}. {mtime}  {name}")
+            else:
+                mtime = datetime.fromtimestamp((s.get("updated") or 0)/1000).strftime("%m-%d %H:%M")
+                console.print(f"  {i}. {mtime}  {s.get('title','')[:40]}")
+        try:
+            c = input("  选择: ").strip() or "1"
+        except (EOFError, KeyboardInterrupt):
+            return
+        try:
+            idx = max(0, min(len(sessions) - 1, int(c) - 1))
+        except Exception:
+            return
 
-    if choice == "q":
-        return
-
-    idx = int(choice) - 1
     if isinstance(sessions[idx], Path):
         state.current_session = sessions[idx]
         state.current_agent   = selected_agent
@@ -505,18 +515,65 @@ def _run_compare():
         console.print("  [yellow]至少需要 2 个 session 才能对比[/yellow]")
         return
 
-    # 选 before
-    console.print("  [dim]Before（优化前）：[/dim]")
-    _show_session_mini_list(files)
-    b_choice = _ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="2")
+    try:
+        import questionary
 
-    console.print()
-    console.print("  [dim]After（优化后）：[/dim]")
-    _show_session_mini_list(files)
-    a_choice = _ask("  选择", choices=[str(i) for i in range(1, min(len(files),10)+1)], default="1")
+        def _choice_label(f):
+            mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")
+            marker = "● " if state.current_session == f else "  "
+            return f"{marker}{mtime}  {f.parent.name[:14]}/{f.stem[:14]}"
 
-    b_path = files[int(b_choice)-1]
-    a_path = files[int(a_choice)-1]
+        choices = [
+            questionary.Choice(_choice_label(f), value=i)
+            for i, f in enumerate(files[:10])
+        ]
+
+        console.print("  [dim]Before（优化前）：[/dim]")
+        b_idx = questionary.select(
+            "选择 Before session",
+            choices=choices,
+            style=questionary.Style([
+                ("selected", "fg:#FFB800 bold"),
+                ("pointer", "fg:#FFB800 bold"),
+                ("question", "fg:white bold"),
+            ])
+        ).ask()
+        if b_idx is None:
+            return
+
+        console.print()
+        console.print("  [dim]After（优化后）：[/dim]")
+        a_idx = questionary.select(
+            "选择 After session",
+            choices=choices,
+            style=questionary.Style([
+                ("selected", "fg:#FFB800 bold"),
+                ("pointer", "fg:#FFB800 bold"),
+                ("question", "fg:white bold"),
+            ])
+        ).ask()
+        if a_idx is None:
+            return
+
+    except Exception:
+        console.print("  [dim]输入数字选择 session[/dim]")
+        for i, f in enumerate(files[:10], 1):
+            mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")
+            name = f"{f.parent.name[:14]}/{f.stem[:14]}"
+            console.print(f"  {i}. {mtime}  {name}")
+        try:
+            b_in = input("  Before: ").strip() or "2"
+            a_in = input("  After: ").strip() or "1"
+        except (EOFError, KeyboardInterrupt):
+            return
+        try:
+            b_idx = max(0, min(len(files) - 1, int(b_in) - 1))
+            a_idx = max(0, min(len(files) - 1, int(a_in) - 1))
+        except Exception:
+            return
+
+    b_path = files[b_idx]
+    a_path = files[a_idx]
 
     if b_path == a_path:
         console.print("  [yellow]请选择不同的 session[/yellow]")
@@ -1002,16 +1059,15 @@ def run():
         history_file = None
 
     def _print_statusbar():
-        """底部状态栏，仿 Claude Code 风格"""
-        icon = "💩"
+        """底部状态栏 — 简洁、信息丰富"""
         session = state.session_name or "未选择 session"
-        mcp_indicator = "  [green]● MCP[/green]"
+        mcp_ok = Path("~/.claude/settings.json").expanduser().exists()
+        mcp_indicator = "  [green]● MCP[/green]" if mcp_ok else ""
+        console.print(f"  [dim #FFB800]{'─' * 72}[/dim #FFB800]")
         console.print(
-            f"  [dim]─────────────────────────────────────────────────────────────────────────────[/dim]"
-        )
-        console.print(
-            f"  [dim]{icon} In[/dim] [white]{session}[/white]  "
-            f"[dim]/ commands · ? help · Ctrl+D exit[/dim]{mcp_indicator}"
+            f"  [dim]💩[/dim] [white]{session}[/white]"
+            f"    [dim]? help[/dim]  [dim]/ cmd[/dim]  [dim]^D quit[/dim]"
+            f"{mcp_indicator}"
         )
 
     while True:

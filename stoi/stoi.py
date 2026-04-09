@@ -244,17 +244,46 @@ def cmd_compare(args: list[str]) -> None:
 
 
 def _pick_session(files):
-    table = Table(box=box.SIMPLE, show_header=False)
-    table.add_column("#", style="bold", width=4)
-    table.add_column("时间", style="dim", width=14)
-    table.add_column("名称", width=32)
-    for i, f in enumerate(files[:10], 1):
+    try:
+        import questionary
         from datetime import datetime
+    except Exception:
+        console.print("  [dim]输入数字选择 session[/dim]")
+        for i, f in enumerate(files[:10], 1):
+            console.print(f"  {i}. {f.parent.name[:16]}/{f.stem[:14]}")
+        try:
+            c = input("  选择: ").strip() or "1"
+        except (EOFError, KeyboardInterrupt):
+            return None
+        try:
+            idx = max(0, min(len(files[:10]) - 1, int(c) - 1))
+            return files[idx]
+        except Exception:
+            return None
+
+    from datetime import datetime
+
+    def _session_label(f):
         mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%m-%d %H:%M")
-        table.add_row(str(i), mtime, f"{f.parent.name[:16]}/{f.stem[:14]}")
-    console.print(table)
-    choice = Prompt.ask("请选择", choices=[str(i) for i in range(1, len(files[:10])+1)], default="1")
-    return files[int(choice) - 1]
+        size = f"{f.stat().st_size // 1024}K"
+        return f"{mtime}  {f.parent.name[:16]}/{f.stem[:14]}  ({size})"
+
+    choices = [
+        questionary.Choice(_session_label(f), value=i)
+        for i, f in enumerate(files[:10])
+    ]
+    selected = questionary.select(
+        "请选择 session (↑↓ 导航，Enter 确认)",
+        choices=choices,
+        style=questionary.Style([
+            ("selected", "fg:#FFB800 bold"),
+            ("pointer", "fg:#FFB800 bold"),
+            ("question", "fg:white bold"),
+        ])
+    ).ask()
+    if selected is None:
+        return None
+    return files[selected]
 
 
 # ── stoi tui / repl ───────────────────────────────────────────────────────────
